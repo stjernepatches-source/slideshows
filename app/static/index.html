@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Slideshow Studio</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>🎬 Slideshow Studio</h1>
+    <nav>
+      <button data-view="create" class="active">New Slideshow</button>
+      <button data-view="library">My Slideshows</button>
+      <button data-view="cast">Cast</button>
+      <button data-view="settings">Settings</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- CREATE ------------------------------------------------------------>
+    <section id="view-create" class="view active">
+      <h2>New Slideshow</h2>
+      <label>Title <input id="c-title" placeholder="e.g. The Heist" /></label>
+      <label>Story
+        <textarea id="c-story" rows="10" placeholder="Paste your narrative here…"></textarea>
+      </label>
+      <div class="row">
+        <label>Slides <input id="c-slides" type="number" value="6" min="1" max="20" /></label>
+        <label>Model <select id="c-model"></select></label>
+      </div>
+      <fieldset>
+        <legend>Cast in this story (pick who appears)</legend>
+        <div id="c-cast" class="cast-pick"></div>
+      </fieldset>
+      <button id="c-go" class="primary">Split into scenes →</button>
+      <p class="hint" id="c-hint"></p>
+    </section>
+
+    <!-- LIBRARY ----------------------------------------------------------->
+    <section id="view-library" class="view">
+      <h2>My Slideshows</h2>
+      <div id="show-list" class="grid"></div>
+    </section>
+
+    <!-- REVIEW ------------------------------------------------------------>
+    <section id="view-review" class="view">
+      <button class="link" id="r-back">← Back</button>
+      <h2 id="r-title"></h2>
+      <p class="status" id="r-status"></p>
+      <div class="row">
+        <button id="r-generate" class="primary">Generate all slides</button>
+        <span id="r-progress" class="hint"></span>
+      </div>
+      <div id="r-slides" class="slides"></div>
+      <fieldset>
+        <legend>Caption & hashtags</legend>
+        <label>Caption <textarea id="r-caption" rows="3"></textarea></label>
+        <label>Hashtags (space or comma separated) <input id="r-hashtags" /></label>
+        <button id="r-save">Save text</button>
+      </fieldset>
+      <fieldset>
+        <legend>Post to TikTok</legend>
+        <p class="hint">TikTok pulls images from a public URL. Paste a public base URL
+          (e.g. a cloudflared/ngrok tunnel to this app) verified in your TikTok dev portal.</p>
+        <label>Public base URL <input id="r-baseurl" placeholder="https://xxxx.trycloudflare.com" /></label>
+        <label class="inline"><input type="checkbox" id="r-direct" /> Direct post (audited apps only — otherwise saved as draft)</label>
+        <button id="r-post" class="primary">Approve & Post</button>
+        <p class="hint" id="r-postresult"></p>
+      </fieldset>
+    </section>
+
+    <!-- CAST -------------------------------------------------------------->
+    <section id="view-cast" class="view">
+      <h2>Cast Library</h2>
+      <div class="card">
+        <h3>Add a character</h3>
+        <label>Name <input id="ch-name" placeholder="e.g. Mara" /></label>
+        <label>Description <textarea id="ch-desc" rows="3" placeholder="Appearance, vibe, clothing…"></textarea></label>
+        <button id="ch-add" class="primary">Add character</button>
+      </div>
+      <div id="cast-list" class="grid"></div>
+    </section>
+
+    <!-- SETTINGS ---------------------------------------------------------->
+    <section id="view-settings" class="view">
+      <h2>Settings & Status</h2>
+      <div id="status-box" class="card"></div>
+      <a id="tt-connect" class="btn" href="/tiktok/login">Connect TikTok</a>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
