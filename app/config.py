@@ -45,6 +45,27 @@ IMAGE_MODEL = os.getenv("IMAGE_MODEL", "seedream").strip().lower()
 SCENE_MODEL = os.getenv("SCENE_MODEL", "claude-sonnet-4-6")
 ASPECT_RATIO = os.getenv("ASPECT_RATIO", "9:16")
 
+# --- Look & feel ------------------------------------------------------------
+# Force-appended to EVERY image prompt so slides look like a real phone camera
+# roll instead of glossy AI art. This is the single biggest lever on "does it
+# look AI-generated." Override the whole thing via STYLE_PROMPT in .env.
+DEFAULT_STYLE_PROMPT = (
+    "Shot on an iPhone — a candid, casual snapshot straight from someone's "
+    "camera roll. Flat, ordinary, everyday lighting (overcast, indoor, or "
+    "plain daylight); NOT cinematic, no dramatic shadows, no moody color "
+    "grading, no golden-hour glow. Authentic and a little imperfect: subtle "
+    "lens smudge, mild grain and sensor noise, slightly soft or imperfect "
+    "focus, a touch of motion blur, real true-to-life skin with pores, "
+    "blemishes and stray hairs. Slightly awkward, unposed, off-center phone "
+    "framing. Snapchat / iPhone realism. Absolutely NOT: studio lighting, "
+    "professional retouching, glamour, HDR, glossy magazine look, polished "
+    "AI rendering, illustration, or 3D render. Output ONLY the photograph "
+    "itself, filling the full frame edge to edge — never draw a phone body, "
+    "bezel, rounded corners, camera notch, status bar, battery/signal icons, "
+    "screenshot chrome, or any app/phone interface."
+)
+STYLE_PROMPT = os.getenv("STYLE_PROMPT", DEFAULT_STYLE_PROMPT)
+
 # --- TikTok -----------------------------------------------------------------
 TIKTOK_CLIENT_KEY = os.getenv("TIKTOK_CLIENT_KEY", "")
 TIKTOK_CLIENT_SECRET = os.getenv("TIKTOK_CLIENT_SECRET", "")

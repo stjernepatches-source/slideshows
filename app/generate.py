@@ -71,13 +71,22 @@ def _size_args(endpoint: str, aspect: str) -> dict:
     return {"aspect_ratio": aspect}  # Gemini / nano-banana family
 
 
+def _styled(prompt: str) -> str:
+    """Append the global camera-roll style so every slide looks like a real
+    phone photo rather than glossy AI art."""
+    style = config.STYLE_PROMPT.strip()
+    if not style:
+        return prompt.strip()
+    return f"{prompt.strip()}\n\nPhoto style (apply strictly): {style}"
+
+
 def text_to_image(prompt: str, model: Optional[str] = None, aspect: Optional[str] = None) -> bytes:
     """Generate an image from a prompt alone (no reference image)."""
     fal_client = _client()
     endpoint = config.resolve_t2i_endpoint(model)  # text-to-image, no input image
     aspect = aspect or config.ASPECT_RATIO
 
-    args = {"prompt": prompt, "num_images": 1, **_size_args(endpoint, aspect)}
+    args = {"prompt": _styled(prompt), "num_images": 1, **_size_args(endpoint, aspect)}
     result = fal_client.subscribe(endpoint, arguments=args)
     return _download(_first_image_url(result))
 
@@ -103,7 +112,7 @@ def generate_slide(
     image_urls = [fal_client.upload_file(str(p)) for p in reference_paths if p.exists()]
 
     args = {
-        "prompt": prompt,
+        "prompt": _styled(prompt),
         "image_urls": image_urls,
         "num_images": 1,
         **_size_args(endpoint, aspect),

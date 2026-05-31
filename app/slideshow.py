@@ -8,6 +8,7 @@ Status flow: draft -> generating -> ready -> posted
 """
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -29,6 +30,16 @@ def _slides_dir(show_id: str) -> Path:
     d = _dir(show_id) / "slides"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def _refs_dir(show_id: str) -> Path:
+    d = _dir(show_id) / "refs"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _slug(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "char"
 
 
 def _now() -> str:
@@ -80,6 +91,11 @@ def create_slideshow(
         "created_at": _now(),
         "post_caption": plan.get("post_caption", ""),
         "hashtags": plan.get("hashtags", []),
+        # Recurring characters the LLM identified (used for auto-consistency
+        # when you didn't attach a manual cast). auto_cast maps name -> ref path,
+        # filled in lazily at generation time.
+        "cast": plan.get("cast", []),
+        "auto_cast": {},
         "slides": [
             {
                 "index": i,
@@ -96,18 +112,72 @@ def create_slideshow(
     return show
 
 
-def _refs_for_slide(show: dict[str, Any], slide: dict[str, Any]) -> list[Path]:
-    """Reference images for the characters named in this slide (fallback: all
-    characters attached to the slideshow)."""
-    cast = [characters.get_character(cid) for cid in show["character_ids"]]
-    cast = [c for c in cast if c]
-    named = {n.lower() for n in slide.get("characters", [])}
-    chosen = [c for c in cast if c["name"].lower() in named] or cast
+def _ensure_auto_cast(show: dict[str, Any]) -> None:
+    """Generate one reference portrait per recurring character so the same face
+    carries across slides. Only runs when no manual cast was attached. Mutates
+    `show` in place (fills show["auto_cast"]) and persists it.
+    """
+    if show.get("character_ids"):
+        return  # manual cast attached -> use the cast library instead
+    cast = show.get("cast") or []
+    if not cast:
+        return
+    auto = show.setdefault("auto_cast", {})
+    refs_dir = _refs_dir(show["id"])
+    changed = False
+    for ch in cast:
+        name = ch.get("name", "").strip()
+        if not name:
+            continue
+        existing = auto.get(name)
+        if existing and (refs_dir / Path(existing).name).exists():
+            continue
+        portrait_prompt = (
+            f"A casual phone photo of {name}: {ch.get('description', '')}. "
+            "Head-and-shoulders, facing the camera, neutral expression, plain "
+            "everyday setting. Clear, well-lit face for identity reference."
+        )
+        img = generate.text_to_image(
+            portrait_prompt, model=show["model"], aspect=show["aspect"]
+        )
+        fname = f"{_slug(name)}.jpg"
+        (refs_dir / fname).write_bytes(img)
+        auto[name] = f"refs/{fname}"
+        changed = True
+    if changed:
+        _save(show)
 
-    refs: list[Path] = []
-    for c in chosen:
-        refs.extend(characters.reference_paths(c["id"]))
-    return refs
+
+def _refs_for_slide(show: dict[str, Any], slide: dict[str, Any]) -> list[Path]:
+    """Reference images for the characters named in this slide.
+
+    Two sources: a manually attached cast (the reusable cast library), or the
+    auto-generated per-character portraits created for this slideshow.
+    """
+    names = slide.get("characters", [])
+
+    # Manual cast attached -> use the cast library (named match, else all).
+    if show.get("character_ids"):
+        cast = [characters.get_character(cid) for cid in show["character_ids"]]
+        cast = [c for c in cast if c]
+        named = {n.lower() for n in names}
+        chosen = [c for c in cast if c["name"].lower() in named] or cast
+        refs: list[Path] = []
+        for c in chosen:
+            refs.extend(characters.reference_paths(c["id"]))
+        return refs
+
+    # Auto cast -> the per-character reference portraits for this slideshow.
+    auto = show.get("auto_cast", {})
+    refs_dir = _refs_dir(show["id"])
+    out: list[Path] = []
+    for name in names:
+        rel = auto.get(name)
+        if rel:
+            p = refs_dir / Path(rel).name
+            if p.exists():
+                out.append(p)
+    return out
 
 
 def generate_slide(show_id: str, index: int) -> dict[str, Any]:
@@ -115,6 +185,7 @@ def generate_slide(show_id: str, index: int) -> dict[str, Any]:
     show = get_slideshow(show_id)
     if show is None:
         raise KeyError(show_id)
+    _ensure_auto_cast(show)  # make sure character reference faces exist
     slide = show["slides"][index]
     model = show["model"]
     aspect = show["aspect"]
@@ -144,6 +215,7 @@ def generate_all(show_id: str) -> dict[str, Any]:
         raise KeyError(show_id)
     show["status"] = "generating"
     _save(show)
+    _ensure_auto_cast(show)  # build character reference faces up front
     for i in range(len(show["slides"])):
         generate_slide(show_id, i)
     show = get_slideshow(show_id)
