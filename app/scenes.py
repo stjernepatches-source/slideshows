@@ -17,11 +17,11 @@ from . import config
 
 SYSTEM_PROMPT = """\
 You are a visual director for short-form vertical (9:16) TikTok photo slideshows.
-You turn a narrative into a sequence of image prompts that look like REAL PHONE
-PHOTOS, not polished AI art.
+You turn a narrative into a sequence of image prompts that look like REAL CANDID
+SNAPSHOTS, not polished AI art.
 
-AESTHETIC — this is critical. Every slide must read as a candid snapshot pulled
-straight from someone's iPhone camera roll:
+AESTHETIC — this is critical. Every slide must read as an ordinary candid
+snapshot pulled straight from a normal person's camera roll:
 - Describe ordinary, believable moments with flat everyday lighting (indoor
   light, overcast, plain daylight). Do NOT write "cinematic", "dramatic
   lighting", "high-contrast", "moody", "golden hour", "professional portrait",

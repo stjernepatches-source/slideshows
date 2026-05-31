@@ -13,11 +13,25 @@ from __future__ import annotations
 from typing import Optional
 
 import os
+import re
 from pathlib import Path
 
 import httpx
 
 from . import config
+
+# Words that make image models render phone/screenshot UI (bezel, status bar,
+# notch). We want RAW photos only, so neutralize them in any prompt before it
+# reaches the model — belt-and-suspenders alongside the negative style text.
+_UI_TRIGGERS = re.compile(
+    r"\b(screenshots?|screen[\s-]?shots?|status\s*bar|phone\s*screen|"
+    r"phone\s*ui|app\s*interface|home\s*screen|lock\s*screen|notch|bezel)\b",
+    re.IGNORECASE,
+)
+
+
+def _strip_ui_triggers(prompt: str) -> str:
+    return _UI_TRIGGERS.sub("photo", prompt)
 
 # Aspect ratio -> Seedream image_size enum. fal's Gemini/nano models take an
 # "aspect_ratio" string directly; Seedream takes a named size or {width,height}.
@@ -74,10 +88,11 @@ def _size_args(endpoint: str, aspect: str) -> dict:
 def _styled(prompt: str) -> str:
     """Append the global camera-roll style so every slide looks like a real
     phone photo rather than glossy AI art."""
+    prompt = _strip_ui_triggers(prompt).strip()
     style = config.STYLE_PROMPT.strip()
     if not style:
-        return prompt.strip()
-    return f"{prompt.strip()}\n\nPhoto style (apply strictly): {style}"
+        return prompt
+    return f"{prompt}\n\nPhoto style (apply strictly): {style}"
 
 
 def text_to_image(prompt: str, model: Optional[str] = None, aspect: Optional[str] = None) -> bytes:
