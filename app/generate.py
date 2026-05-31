@@ -10,6 +10,8 @@ the model keeps the character consistent.
 """
 from __future__ import annotations
 
+from typing import Optional
+
 import os
 from pathlib import Path
 
@@ -69,7 +71,7 @@ def _size_args(endpoint: str, aspect: str) -> dict:
     return {"aspect_ratio": aspect}  # Gemini / nano-banana family
 
 
-def text_to_image(prompt: str, model: str | None = None, aspect: str | None = None) -> bytes:
+def text_to_image(prompt: str, model: Optional[str] = None, aspect: Optional[str] = None) -> bytes:
     """Generate an image from a prompt alone (no reference image)."""
     fal_client = _client()
     endpoint = config.resolve_image_endpoint(model)
@@ -82,9 +84,9 @@ def text_to_image(prompt: str, model: str | None = None, aspect: str | None = No
 
 def generate_slide(
     prompt: str,
-    reference_paths: list[Path] | None = None,
-    model: str | None = None,
-    aspect: str | None = None,
+    reference_paths: Optional[list[Path]] = None,
+    model: Optional[str] = None,
+    aspect: Optional[str] = None,
 ) -> bytes:
     """Generate one slide, keyed to the given reference images for consistency.
 

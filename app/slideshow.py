@@ -11,7 +11,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Optional, Any
 
 from . import characters, config, generate, metadata, scenes
 from .storage import read_json, write_json
@@ -45,7 +45,7 @@ def list_slideshows() -> list[dict[str, Any]]:
     return shows
 
 
-def get_slideshow(show_id: str) -> dict[str, Any] | None:
+def get_slideshow(show_id: str) -> Optional[dict[str, Any]]:
     p = _meta_path(show_id)
     return read_json(p, default=None) if p.exists() else None
 
@@ -59,8 +59,8 @@ def create_slideshow(
     story: str,
     character_ids: list[str],
     num_slides: int = 6,
-    model: str | None = None,
-    aspect: str | None = None,
+    model: Optional[str] = None,
+    aspect: Optional[str] = None,
 ) -> dict[str, Any]:
     """Create a slideshow record and run the scene split immediately."""
     config.ensure_dirs()
@@ -154,9 +154,9 @@ def generate_all(show_id: str) -> dict[str, Any]:
 
 def update_text(
     show_id: str,
-    post_caption: str | None = None,
-    hashtags: list[str] | None = None,
-    slide_captions: dict[int, str] | None = None,
+    post_caption: Optional[str] = None,
+    hashtags: Optional[list[str]] = None,
+    slide_captions: Optional[dict[int, str]] = None,
 ) -> dict[str, Any]:
     show = get_slideshow(show_id)
     if show is None:
@@ -171,7 +171,7 @@ def update_text(
     return show
 
 
-def slide_file(show_id: str, index: int) -> Path | None:
+def slide_file(show_id: str, index: int) -> Optional[Path]:
     show = get_slideshow(show_id)
     if not show:
         return None

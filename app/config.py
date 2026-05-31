@@ -7,6 +7,8 @@ action that needs a missing key.
 """
 from __future__ import annotations
 
+from typing import Optional
+
 import os
 from pathlib import Path
 
@@ -58,7 +60,7 @@ def ensure_dirs() -> None:
     SLIDESHOWS_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def resolve_image_endpoint(model: str | None = None) -> str:
+def resolve_image_endpoint(model: Optional[str] = None) -> str:
     """Map a friendly model name to its fal endpoint id."""
     key = (model or IMAGE_MODEL).strip().lower()
     if key not in IMAGE_MODELS:
@@ -68,5 +70,5 @@ def resolve_image_endpoint(model: str | None = None) -> str:
     return IMAGE_MODELS[key]
 
 
-def model_has_synthid(model: str | None = None) -> bool:
+def model_has_synthid(model: Optional[str] = None) -> bool:
     return (model or IMAGE_MODEL).strip().lower() in SYNTHID_MODELS

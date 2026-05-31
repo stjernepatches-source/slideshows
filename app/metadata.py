@@ -21,6 +21,8 @@ the whole set is uniform for TikTok.
 """
 from __future__ import annotations
 
+from typing import Optional
+
 import io
 import shutil
 import subprocess
@@ -55,7 +57,7 @@ def _center_crop_to_aspect(img: Image.Image, aspect: str) -> Image.Image:
     return img.crop((0, top, w, top + new_h))
 
 
-def clean_image_bytes(data: bytes, aspect: str | None = None) -> bytes:
+def clean_image_bytes(data: bytes, aspect: Optional[str] = None) -> bytes:
     """Re-encode image bytes with no metadata, optionally normalizing aspect."""
     img = Image.open(io.BytesIO(data))
     img = img.convert("RGB")  # drop alpha + any embedded profiles
@@ -71,7 +73,7 @@ def exiftool_available() -> bool:
     return shutil.which("exiftool") is not None
 
 
-def strip_file(path: Path, aspect: str | None = None) -> Path:
+def strip_file(path: Path, aspect: Optional[str] = None) -> Path:
     """Clean a saved image file in place. Returns the path."""
     cleaned = clean_image_bytes(path.read_bytes(), aspect=aspect)
     path.write_bytes(cleaned)

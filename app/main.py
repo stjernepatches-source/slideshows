@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Optional, Any
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
@@ -55,7 +55,7 @@ class CastCreate(BaseModel):
 
 
 class RefGenerate(BaseModel):
-    prompt: str | None = None
+    prompt: Optional[str] = None
 
 
 @app.get("/api/cast")
@@ -108,18 +108,18 @@ class SlideshowCreate(BaseModel):
     story: str
     character_ids: list[str] = []
     num_slides: int = 6
-    model: str | None = None
-    aspect: str | None = None
+    model: Optional[str] = None
+    aspect: Optional[str] = None
 
 
 class TextUpdate(BaseModel):
-    post_caption: str | None = None
-    hashtags: list[str] | None = None
-    slide_captions: dict[int, str] | None = None
+    post_caption: Optional[str] = None
+    hashtags: Optional[list[str]] = None
+    slide_captions: Optional[dict[int, str]] = None
 
 
 class PostRequest(BaseModel):
-    public_base_url: str | None = None  # e.g. https://abc.trycloudflare.com
+    public_base_url: Optional[str] = None  # e.g. https://abc.trycloudflare.com
     direct: bool = False
 
 

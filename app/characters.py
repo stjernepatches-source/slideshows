@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Optional, Any
 
 from . import config, generate
 from .storage import read_json, write_json
@@ -33,7 +33,7 @@ def list_characters() -> list[dict[str, Any]]:
     return list(reversed(_index()))
 
 
-def get_character(char_id: str) -> dict[str, Any] | None:
+def get_character(char_id: str) -> Optional[dict[str, Any]]:
     for row in _index():
         if row["id"] == char_id:
             return row
@@ -80,7 +80,7 @@ def add_reference_from_bytes(char_id: str, data: bytes, filename: str) -> dict[s
     return _update(char_id, lambda r: r["reference_images"].append(fname))
 
 
-def generate_reference(char_id: str, prompt: str | None = None) -> dict[str, Any]:
+def generate_reference(char_id: str, prompt: Optional[str] = None) -> dict[str, Any]:
     """Generate a clean character-sheet portrait from the description via fal.
 
     This gives you a reusable reference image for a character you don't have a

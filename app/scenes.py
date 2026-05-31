@@ -11,7 +11,7 @@ cheaper and faster.
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Optional, Any
 
 from . import config
 
@@ -55,7 +55,7 @@ def _client():
 def split_story(
     story: str,
     num_slides: int = 6,
-    cast: list[dict[str, Any]] | None = None,
+    cast: Optional[list[dict[str, Any]]] = None,
 ) -> dict[str, Any]:
     """Return {slides:[...], post_caption, hashtags} for the given story."""
     cast = cast or []
