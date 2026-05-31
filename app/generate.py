@@ -74,7 +74,7 @@ def _size_args(endpoint: str, aspect: str) -> dict:
 def text_to_image(prompt: str, model: Optional[str] = None, aspect: Optional[str] = None) -> bytes:
     """Generate an image from a prompt alone (no reference image)."""
     fal_client = _client()
-    endpoint = config.resolve_image_endpoint(model)
+    endpoint = config.resolve_t2i_endpoint(model)  # text-to-image, no input image
     aspect = aspect or config.ASPECT_RATIO
 
     args = {"prompt": prompt, "num_images": 1, **_size_args(endpoint, aspect)}

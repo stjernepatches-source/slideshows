@@ -30,6 +30,14 @@ IMAGE_MODELS = {
     "nano": "fal-ai/nano-banana/edit",
     "nano-pro": "fal-ai/nano-banana-pro/edit",
 }
+# Text-to-image (no reference image) variants. The "/edit" endpoints above
+# REQUIRE an input image, so the no-reference path (e.g. generating a brand-new
+# character reference sheet from a description) must use these instead.
+IMAGE_MODELS_T2I = {
+    "seedream": "fal-ai/bytedance/seedream/v4/text-to-image",
+    "nano": "fal-ai/nano-banana",
+    "nano-pro": "fal-ai/nano-banana-pro",
+}
 # Models that embed Google's SynthID watermark (cannot be reliably stripped).
 SYNTHID_MODELS = {"nano", "nano-pro"}
 
@@ -61,13 +69,23 @@ def ensure_dirs() -> None:
 
 
 def resolve_image_endpoint(model: Optional[str] = None) -> str:
-    """Map a friendly model name to its fal endpoint id."""
+    """Map a friendly model name to its fal edit endpoint id (needs references)."""
     key = (model or IMAGE_MODEL).strip().lower()
     if key not in IMAGE_MODELS:
         raise ValueError(
             f"Unknown IMAGE_MODEL '{key}'. Valid options: {', '.join(IMAGE_MODELS)}"
         )
     return IMAGE_MODELS[key]
+
+
+def resolve_t2i_endpoint(model: Optional[str] = None) -> str:
+    """Map a friendly model name to its fal text-to-image endpoint id."""
+    key = (model or IMAGE_MODEL).strip().lower()
+    if key not in IMAGE_MODELS_T2I:
+        raise ValueError(
+            f"Unknown IMAGE_MODEL '{key}'. Valid options: {', '.join(IMAGE_MODELS_T2I)}"
+        )
+    return IMAGE_MODELS_T2I[key]
 
 
 def model_has_synthid(model: Optional[str] = None) -> bool:
