@@ -14,6 +14,7 @@ API: base https://backend.blotato.com/v2, header `blotato-api-key`.
 from __future__ import annotations
 
 import base64
+import re
 import time
 from typing import Any, Optional
 
@@ -22,6 +23,15 @@ import httpx
 from . import config
 
 BASE = "https://backend.blotato.com/v2"
+
+# Blotato/TikTok occasionally return a transient upstream error (e.g. an HTML
+# error page -> "JSON value expected but got '<'", gateway/5xx, timeouts). These
+# are worth retrying so a one-off hiccup doesn't kill a scheduled post.
+_TRANSIENT = re.compile(
+    r"internal error|json value expected|got '<'|timeout|temporar|"
+    r"50[0-9]|bad gateway|gateway|unavailable|try again",
+    re.IGNORECASE,
+)
 
 
 def is_configured() -> bool:
@@ -144,11 +154,13 @@ def create_post(
     media_urls: list[str],
     target: dict[str, Any],
     poll: bool = True,
+    attempts: int = 3,
 ) -> dict[str, Any]:
     """Create a post on Blotato and (optionally) wait for delivery.
 
-    Returns Blotato's response merged with the final submission status. Raises
-    if the platform rejects the post.
+    Retries transient upstream failures (gateway/HTML/timeout) up to `attempts`
+    times. Returns Blotato's response merged with the final submission status;
+    raises on a genuine (non-transient) rejection or after exhausting retries.
     """
     if not account_id:
         raise RuntimeError("Missing account id for this platform.")
@@ -166,18 +178,27 @@ def create_post(
             "target": target,
         }
     }
-    with httpx.Client(timeout=120) as c:
-        r = c.post(f"{BASE}/posts", headers=_headers(), json=payload)
-        r.raise_for_status()
-        resp = r.json()
+    last_msg = ""
+    for attempt in range(1, attempts + 1):
+        with httpx.Client(timeout=120) as c:
+            r = c.post(f"{BASE}/posts", headers=_headers(), json=payload)
+            r.raise_for_status()
+            resp = r.json()
 
-    sub_id = resp.get("postSubmissionId")
-    if poll and sub_id:
+        sub_id = resp.get("postSubmissionId")
+        if not (poll and sub_id):
+            return resp
+
         final = _await_submission(sub_id)
         resp.update(final)
-        if final.get("status") == "failed":
-            raise RuntimeError(final.get("errorMessage", "post rejected by platform"))
-    return resp
+        if final.get("status") != "failed":
+            return resp
+
+        last_msg = final.get("errorMessage", "post rejected by platform")
+        if not _TRANSIENT.search(last_msg) or attempt == attempts:
+            raise RuntimeError(last_msg)
+        time.sleep(5 * attempt)  # backoff, then retry
+    raise RuntimeError(last_msg or "post failed")
 
 
 def post_tiktok_draft(
