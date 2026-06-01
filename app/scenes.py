@@ -64,7 +64,10 @@ COMPARISON / CTA SLIDE:
 - Exactly ONE slide is the payoff where two people get compared on their
   dating-market value using the product. Mark that slide "type": "comparison"
   and set "compare": ["Name1", "Name2"] to the two people compared (use exact
-  cast names; the lead can be one of them). Its "image_prompt" can be brief
+  cast names; the lead can be one of them). IMPORTANT: "compare"[0] is the
+  WINNER — the results template always declares the FIRST/left person the higher
+  score. Order it [higher-value person, lower-value person] and make the story's
+  reveal consistent with that outcome. Its "image_prompt" can be brief
   (it's replaced by the product's results template) but its "caption" should be
   the punchy on-screen line for that reveal. All other slides are "type": "photo".
 - Build toward it naturally (curiosity / pettiness / closure), never salesy.
