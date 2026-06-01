@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Any
 
-from . import characters, config, generate, metadata, scenes
+from . import characters, config, generate, metadata, overlay, scenes, video
 from .storage import read_json, write_json
 
 
@@ -261,6 +261,37 @@ def ordered_slide_files(show_id: str) -> list[Path]:
         if s.get("file"):
             out.append(_slides_dir(show_id) / s["file"])
     return out
+
+
+def composited_slides(show_id: str) -> list[bytes]:
+    """Each generated slide with its caption text burned in (post/preview)."""
+    show = get_slideshow(show_id) or {}
+    frames: list[bytes] = []
+    for s in show.get("slides", []):
+        if s.get("file"):
+            path = _slides_dir(show_id) / s["file"]
+            frames.append(overlay.compose_file(path, s.get("caption", "")))
+    return frames
+
+
+def build_reel_video(show_id: str) -> Path:
+    """Stitch the generated slides into a 9:16 reel mp4. The first slide gets a
+    'Wait for it' hook so the reel doesn't read as a frozen image."""
+    show = get_slideshow(show_id)
+    if show is None:
+        raise KeyError(show_id)
+    generated = [s for s in show["slides"] if s.get("file")]
+    if not generated:
+        raise ValueError("Generate the slides before building a reel.")
+
+    frames: list[bytes] = []
+    for pos, s in enumerate(generated):
+        path = _slides_dir(show_id) / s["file"]
+        bottom = config.REEL_WAIT_TEXT if (pos == 0 and config.REEL_WAIT_ENABLED) else None
+        frames.append(overlay.compose_file(path, s.get("caption", ""), bottom_text=bottom))
+
+    out = _dir(show_id) / "reel.mp4"
+    return video.build_reel(frames, out)
 
 
 def mark_posted(show_id: str, info: dict[str, Any]) -> dict[str, Any]:

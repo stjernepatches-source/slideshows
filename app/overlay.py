@@ -83,15 +83,27 @@ def _wrap(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, ma
     return [ln for ln in lines if ln != ""] or [text]
 
 
-def _draw_caption(img: Image.Image, text: str) -> None:
-    """Draw wrapped, centered, white-with-black-outline text in the safe zone."""
+def _draw_caption(
+    img: Image.Image,
+    text: str,
+    top_frac: Optional[float] = None,
+    bottom_reserve: Optional[float] = None,
+) -> None:
+    """Draw wrapped, centered, white-with-black-outline text in a safe band.
+
+    top_frac        = where the text block starts (fraction of height)
+    bottom_reserve  = fraction of height kept clear at the bottom (UI zone)
+    """
     w, h = img.size
     draw = ImageDraw.Draw(img)
 
+    top_frac = config.TEXT_SAFE_TOP if top_frac is None else top_frac
+    bottom_reserve = config.TEXT_SAFE_BOTTOM if bottom_reserve is None else bottom_reserve
+
     side = config.TEXT_SAFE_SIDE * w          # left/right margin
     max_w = w - 2 * side
-    top = config.TEXT_SAFE_TOP * h            # where the text block begins
-    bottom_limit = (1 - config.TEXT_SAFE_BOTTOM) * h  # never cross into UI
+    top = top_frac * h                        # where the text block begins
+    bottom_limit = (1 - bottom_reserve) * h   # never cross into UI
 
     # Pick the largest font size (from a sensible cap downward) whose wrapped
     # lines fit the width AND don't run past the bottom safe limit.
@@ -123,18 +135,26 @@ def _draw_caption(img: Image.Image, text: str) -> None:
         y += line_h
 
 
-def compose_caption(image: bytes, text: Optional[str]) -> bytes:
-    """Return JPEG bytes of the image with `text` burned on (or unchanged if no
-    text). Output carries no metadata (fresh Pillow encode)."""
+def compose_caption(
+    image: bytes,
+    text: Optional[str],
+    bottom_text: Optional[str] = None,
+) -> bytes:
+    """Return JPEG bytes with `text` burned near the top and optional
+    `bottom_text` (e.g. "Wait for it") burned lower down. Emojis are stripped
+    from both. Output carries no metadata (fresh Pillow encode)."""
     img = Image.open(io.BytesIO(image)).convert("RGB")
     text = _strip_emoji(text) if text else ""
     if text:
         _draw_caption(img, text)
+    bt = _strip_emoji(bottom_text) if bottom_text else ""
+    if bt:
+        _draw_caption(img, bt, top_frac=config.TEXT_WAIT_TOP, bottom_reserve=0.06)
     out = io.BytesIO()
     img.save(out, format="JPEG", quality=92, optimize=True)
     return out.getvalue()
 
 
-def compose_file(path: Path, text: Optional[str]) -> bytes:
-    """Compose the caption onto a slide file's bytes (file left untouched)."""
-    return compose_caption(path.read_bytes(), text)
+def compose_file(path: Path, text: Optional[str], bottom_text: Optional[str] = None) -> bytes:
+    """Compose caption (+ optional bottom text) onto a slide file's bytes."""
+    return compose_caption(path.read_bytes(), text, bottom_text=bottom_text)

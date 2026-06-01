@@ -70,24 +70,114 @@ def _account_id(acc: dict[str, Any]) -> str:
     return ""
 
 
-def find_tiktok_account_id() -> Optional[str]:
-    """Return the connected TikTok account id, if there's exactly a TikTok one."""
-    if config.BLOTATO_TIKTOK_ACCOUNT_ID:
-        return config.BLOTATO_TIKTOK_ACCOUNT_ID
-    tiktoks = [a for a in list_accounts() if "tiktok" in _account_platform(a)]
-    if len(tiktoks) == 1:
-        return _account_id(tiktoks[0])
+_ACCOUNT_ID_ENV = {
+    "tiktok": "BLOTATO_TIKTOK_ACCOUNT_ID",
+    "facebook": "BLOTATO_FACEBOOK_ACCOUNT_ID",
+    "instagram": "BLOTATO_INSTAGRAM_ACCOUNT_ID",
+}
+
+
+def find_account_id(platform: str) -> Optional[str]:
+    """Connected account id for a platform. Uses the .env override if set, else
+    auto-detects when exactly one account of that platform is connected."""
+    override = getattr(config, _ACCOUNT_ID_ENV.get(platform, ""), "")
+    if override:
+        return override
+    matches = [a for a in list_accounts() if platform in _account_platform(a)]
+    if len(matches) == 1:
+        return _account_id(matches[0])
     return None
 
 
-def upload_image(data: bytes, content_type: str = "image/jpeg") -> str:
-    """Upload raw image bytes (base64) to Blotato; return the hosted URL."""
+def find_tiktok_account_id() -> Optional[str]:
+    return find_account_id("tiktok")
+
+
+def upload_media(data: bytes, content_type: str) -> str:
+    """Upload raw bytes (base64) to Blotato; return the hosted media URL."""
     b64 = base64.b64encode(data).decode("ascii")
     payload = {"url": f"data:{content_type};base64,{b64}"}
-    with httpx.Client(timeout=120) as c:
+    with httpx.Client(timeout=300) as c:
         r = c.post(f"{BASE}/media", headers=_headers(), json=payload)
         r.raise_for_status()
         return r.json()["url"]
+
+
+def upload_image(data: bytes) -> str:
+    return upload_media(data, "image/jpeg")
+
+
+def upload_video(data: bytes) -> str:
+    return upload_media(data, "video/mp4")
+
+
+# --- Target builders --------------------------------------------------------
+def tiktok_target(cover_index: int = 0, title: str = "", draft: bool = True) -> dict[str, Any]:
+    return {
+        "targetType": "tiktok",
+        "isDraft": draft,                  # draft -> no TikTok audit needed
+        "privacyLevel": "SELF_ONLY",       # finalized when you publish
+        "isAiGenerated": config.TIKTOK_LABEL_AI,
+        "disabledComments": False,
+        "disabledDuet": False,
+        "disabledStitch": False,
+        "isBrandedContent": False,
+        "isYourBrand": False,
+        "autoAddMusic": False,             # you add music manually
+        "imageCoverIndex": cover_index,
+        "title": title or "",
+    }
+
+
+def facebook_reel_target(page_id: str) -> dict[str, Any]:
+    return {"targetType": "facebook", "pageId": str(page_id), "mediaType": "reel"}
+
+
+def instagram_reel_target(share_to_feed: bool = True) -> dict[str, Any]:
+    return {"targetType": "instagram", "mediaType": "reel", "shareToFeed": share_to_feed}
+
+
+# --- Posting ----------------------------------------------------------------
+def create_post(
+    account_id: str,
+    text: str,
+    media_urls: list[str],
+    target: dict[str, Any],
+    poll: bool = True,
+) -> dict[str, Any]:
+    """Create a post on Blotato and (optionally) wait for delivery.
+
+    Returns Blotato's response merged with the final submission status. Raises
+    if the platform rejects the post.
+    """
+    if not account_id:
+        raise RuntimeError("Missing account id for this platform.")
+    if not media_urls:
+        raise ValueError("No media to post.")
+
+    payload = {
+        "post": {
+            "accountId": str(account_id),
+            "content": {
+                "text": text or "",
+                "mediaUrls": media_urls,
+                "platform": target["targetType"],
+            },
+            "target": target,
+        }
+    }
+    with httpx.Client(timeout=120) as c:
+        r = c.post(f"{BASE}/posts", headers=_headers(), json=payload)
+        r.raise_for_status()
+        resp = r.json()
+
+    sub_id = resp.get("postSubmissionId")
+    if poll and sub_id:
+        final = _await_submission(sub_id)
+        resp.update(final)
+        if final.get("status") == "failed":
+            raise RuntimeError(final.get("errorMessage", "post rejected by platform"))
+    return resp
 
 
 def post_tiktok_draft(
@@ -97,60 +187,16 @@ def post_tiktok_draft(
     cover_index: int = 0,
     title: str = "",
 ) -> dict[str, Any]:
-    """Upload slides and create a TikTok DRAFT photo post. Returns Blotato's
-    response (incl. postSubmissionId). You finish/publish + add music in the app.
-    """
-    if not image_bytes:
-        raise ValueError("No slides to post.")
-    account_id = account_id or find_tiktok_account_id()
+    """Upload slides and create a TikTok DRAFT photo post."""
+    account_id = account_id or find_account_id("tiktok")
     if not account_id:
         raise RuntimeError(
             "No TikTok account id. Connect TikTok in Blotato and set "
-            "BLOTATO_TIKTOK_ACCOUNT_ID in .env (or ensure exactly one TikTok "
-            "account is connected so it can be auto-detected)."
+            "BLOTATO_TIKTOK_ACCOUNT_ID in .env (or connect exactly one)."
         )
-
     media_urls = [upload_image(b) for b in image_bytes]
-
-    payload = {
-        "post": {
-            "accountId": str(account_id),
-            "content": {
-                "text": text or "",
-                "mediaUrls": media_urls,
-                "platform": "tiktok",
-            },
-            "target": {
-                "targetType": "tiktok",
-                "isDraft": True,                 # draft -> no TikTok audit needed
-                "privacyLevel": "SELF_ONLY",     # finalized when you publish
-                "isAiGenerated": config.TIKTOK_LABEL_AI,
-                "disabledComments": False,
-                "disabledDuet": False,
-                "disabledStitch": False,
-                "isBrandedContent": False,
-                "isYourBrand": False,
-                "autoAddMusic": False,           # you add music manually
-                "imageCoverIndex": cover_index,
-                "title": title or "",
-            },
-        }
-    }
-
-    with httpx.Client(timeout=120) as c:
-        r = c.post(f"{BASE}/posts", headers=_headers(), json=payload)
-        r.raise_for_status()
-        resp = r.json()
-
-    sub_id = resp.get("postSubmissionId")
-    if sub_id:
-        final = _await_submission(sub_id)
-        resp.update(final)
-        if final.get("status") == "failed":
-            raise RuntimeError(
-                "TikTok rejected the draft: " + final.get("errorMessage", "unknown error")
-            )
-    return resp
+    return create_post(account_id, text, media_urls,
+                       tiktok_target(cover_index=cover_index, title=title, draft=True))
 
 
 def get_submission(submission_id: str) -> dict[str, Any]:

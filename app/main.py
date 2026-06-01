@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import blotato, characters, config, metadata, overlay, slideshow, tiktok
+from . import blotato, characters, config, metadata, overlay, slideshow, tiktok, video
 
 config.ensure_dirs()
 
@@ -46,9 +46,21 @@ def get_config() -> dict[str, Any]:
         "site_url": config.SITE_URL,
         "label_ai": config.TIKTOK_LABEL_AI,
         "blotato_configured": blotato.is_configured(),
-        "tiktok_configured": tiktok.is_configured(),
-        "tiktok_connected": tiktok.is_connected(),
+        "blotato_platforms": _blotato_platforms(),
+        "ffmpeg": video.ffmpeg_available(),
+        "reel_wait_text": config.REEL_WAIT_TEXT if config.REEL_WAIT_ENABLED else "",
+        "facebook_page_set": bool(config.FACEBOOK_PAGE_ID),
     }
+
+
+def _blotato_platforms() -> list[str]:
+    """Platforms with a connected Blotato account (best-effort; [] on error)."""
+    if not blotato.is_configured():
+        return []
+    try:
+        return sorted({blotato._account_platform(a) for a in blotato.list_accounts()})  # noqa: SLF001
+    except Exception:
+        return []
 
 
 # --- Cast library -----------------------------------------------------------
@@ -122,7 +134,9 @@ class TextUpdate(BaseModel):
 
 
 class PostRequest(BaseModel):
-    account_id: Optional[str] = None  # override Blotato TikTok account if needed
+    platforms: list[str] = ["tiktok"]          # any of: tiktok, facebook, instagram
+    account_id: Optional[str] = None           # override TikTok account
+    facebook_page_id: Optional[str] = None     # override FB page
 
 
 @app.get("/api/slideshows")
@@ -252,37 +266,90 @@ def tiktok_callback(request: Request) -> HTMLResponse:
     )
 
 
+def _post_text(show: dict[str, Any]) -> str:
+    caption = show.get("post_caption", "")
+    tags = " ".join(f"#{t.lstrip('#')}" for t in show.get("hashtags", []))
+    return (caption + ("\n\n" + tags if tags else "")).strip()
+
+
 @app.post("/api/slideshows/{show_id}/post")
 def api_post_show(show_id: str, body: PostRequest = PostRequest()) -> dict[str, Any]:
     show = slideshow.get_slideshow(show_id)
     if show is None:
         raise HTTPException(404, "No such slideshow.")
     if not blotato.is_configured():
-        raise HTTPException(400, "Set BLOTATO_API_KEY in .env to post to TikTok.")
-
-    # Compose each slide with its caption text burned in, in slide order.
-    image_bytes = [
-        _composited_slide(show_id, i)
-        for i in range(len(show["slides"]))
-        if show["slides"][i].get("file")
-    ]
-    if not image_bytes:
+        raise HTTPException(400, "Set BLOTATO_API_KEY in .env to post.")
+    if not any(s.get("file") for s in show["slides"]):
         raise HTTPException(400, "Generate the slides before posting.")
 
-    caption = show.get("post_caption", "")
-    tags = " ".join(f"#{t.lstrip('#')}" for t in show.get("hashtags", []))
-    text = (caption + ("\n\n" + tags if tags else "")).strip()
+    platforms = body.platforms or ["tiktok"]
+    text = _post_text(show)
+    results: dict[str, Any] = {}
+    errors: dict[str, str] = {}
 
+    # TikTok: photo slideshow as a DRAFT (you add music + publish in-app).
+    if "tiktok" in platforms:
+        try:
+            image_bytes = [
+                _composited_slide(show_id, i)
+                for i in range(len(show["slides"]))
+                if show["slides"][i].get("file")
+            ]
+            results["tiktok"] = blotato.post_tiktok_draft(
+                image_bytes=image_bytes, text=text,
+                account_id=body.account_id, title=show.get("title", ""),
+            )
+        except Exception as e:
+            errors["tiktok"] = str(e)
+
+    # Facebook / Instagram: a stitched reel, posted directly.
+    if "facebook" in platforms or "instagram" in platforms:
+        try:
+            reel_path = slideshow.build_reel_video(show_id)
+            video_url = blotato.upload_video(reel_path.read_bytes())
+        except Exception as e:
+            for p in ("facebook", "instagram"):
+                if p in platforms:
+                    errors[p] = f"reel build/upload failed: {e}"
+            video_url = None
+
+        if video_url and "facebook" in platforms:
+            try:
+                page_id = body.facebook_page_id or config.FACEBOOK_PAGE_ID
+                if not page_id:
+                    raise RuntimeError("No Facebook Page id set (FACEBOOK_PAGE_ID).")
+                acct = blotato.find_account_id("facebook")
+                if not acct:
+                    raise RuntimeError("No Facebook account connected in Blotato.")
+                results["facebook"] = blotato.create_post(
+                    acct, text, [video_url], blotato.facebook_reel_target(page_id))
+            except Exception as e:
+                errors["facebook"] = str(e)
+
+        if video_url and "instagram" in platforms:
+            try:
+                acct = blotato.find_account_id("instagram")
+                if not acct:
+                    raise RuntimeError("No Instagram account connected in Blotato.")
+                results["instagram"] = blotato.create_post(
+                    acct, text, [video_url],
+                    blotato.instagram_reel_target(config.INSTAGRAM_SHARE_TO_FEED))
+            except Exception as e:
+                errors["instagram"] = str(e)
+
+    if results and not errors:
+        slideshow.mark_posted(show_id, {"provider": "blotato", "results": results})
+    return {"results": results, "errors": errors}
+
+
+@app.get("/api/slideshows/{show_id}/reel.mp4")
+def api_reel_preview(show_id: str) -> Response:
+    """Build and return the stitched reel for preview."""
     try:
-        resp = blotato.post_tiktok_draft(
-            image_bytes=image_bytes,
-            text=text,
-            account_id=body.account_id,
-            title=show.get("title", ""),
-        )
-    except Exception as e:
-        raise HTTPException(400, f"Blotato post failed: {e}")
-
-    info = {"provider": "blotato", "draft": True, "response": resp}
-    slideshow.mark_posted(show_id, info)
-    return info
+        path = slideshow.build_reel_video(show_id)
+    except (KeyError, ValueError) as e:
+        raise HTTPException(400, str(e))
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+    return Response(path.read_bytes(), media_type="video/mp4",
+                    headers={"Cache-Control": "no-store"})

@@ -60,11 +60,17 @@
         <button id="r-save">Save text</button>
       </fieldset>
       <fieldset>
-        <legend>Post to TikTok (draft via Blotato)</legend>
-        <p class="hint">Uploads the slides (with caption text burned in) to Blotato and
-          creates a <b>draft</b> on your connected TikTok account. No TikTok app audit needed.
-          Then open TikTok → Drafts to add music and publish.</p>
-        <button id="r-post" class="primary">Approve & Send to TikTok drafts</button>
+        <legend>Publish (via Blotato)</legend>
+        <p class="hint">Pick where to post. <b>TikTok</b> = photo slideshow saved as a
+          <b>draft</b> (add music + publish in-app). <b>Facebook / Instagram</b> = a stitched
+          <b>reel</b> (each slide 3s, "Wait for it" hook on slide 1) posted directly.</p>
+        <div id="r-platforms" class="row" style="flex-wrap:wrap;gap:1rem">
+          <label class="inline"><input type="checkbox" value="tiktok" checked> TikTok (draft)</label>
+          <label class="inline"><input type="checkbox" value="facebook"> Facebook (reel)</label>
+          <label class="inline"><input type="checkbox" value="instagram"> Instagram (reel)</label>
+        </div>
+        <p class="hint"><a id="r-reel-link" href="#" target="_blank">▶ Preview the reel video</a></p>
+        <button id="r-post" class="primary">Approve & Publish</button>
         <p class="hint" id="r-postresult"></p>
       </fieldset>
     </section>

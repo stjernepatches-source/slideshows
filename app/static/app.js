@@ -46,8 +46,10 @@ async function loadStatus() {
     }</p>
     <p>Site (caption CTA): <b>${CONFIG.site_url || "—"}</b></p>
     <p>Posting via Blotato: ${yes(CONFIG.blotato_configured)} ${
-      CONFIG.blotato_configured ? '<span class="hint">(posts as TikTok drafts)</span>' : '<span class="hint">(set BLOTATO_API_KEY in .env)</span>'
+      CONFIG.blotato_configured ? `<span class="hint">(connected: ${(CONFIG.blotato_platforms || []).join(", ") || "none"})</span>` : '<span class="hint">(set BLOTATO_API_KEY in .env)</span>'
     }</p>
+    <p>ffmpeg (for reels): ${yes(CONFIG.ffmpeg)} &nbsp; FB page set: ${yes(CONFIG.facebook_page_set)}</p>
+    <p>Reel hook text: <b>${CONFIG.reel_wait_text || "(off)"}</b></p>
     <p>Declare posts as AI to TikTok: ${CONFIG.label_ai ? '<span class="warn">yes</span>' : '<span class="ok">no</span>'}</p>`;
 }
 
@@ -169,20 +171,35 @@ $("#r-save").addEventListener("click", async () => {
   setTimeout(() => ($("#r-save").textContent = "Save text"), 1200);
 });
 
+$("#r-reel-link").addEventListener("click", (e) => {
+  e.preventDefault();
+  window.open(`/api/slideshows/${CURRENT}/reel.mp4?t=${Date.now()}`, "_blank");
+});
+
 $("#r-post").addEventListener("click", async () => {
-  $("#r-postresult").textContent = "Uploading to Blotato + creating TikTok draft…";
+  const platforms = $$("#r-platforms input:checked").map((i) => i.value);
+  if (!platforms.length) return ($("#r-postresult").textContent = "Pick at least one platform.");
+  const building = platforms.some((p) => p === "facebook" || p === "instagram");
+  $("#r-postresult").textContent = building
+    ? "Uploading + stitching reel + publishing… (this can take ~30s)"
+    : "Uploading to Blotato + creating TikTok draft…";
   $("#r-post").disabled = true;
   try {
     const res = await api(`/api/slideshows/${CURRENT}/post`, {
       method: "POST",
-      body: JSON.stringify({}),
+      body: JSON.stringify({ platforms }),
     });
-    const st = (res.response && res.response.status) || "submitted";
-    const ok = st === "published" || st === "submitted" || st === "in-progress";
-    $("#r-postresult").innerHTML = ok
-      ? `<span class="ok">✓ Delivered to TikTok as a DRAFT.</span> ` +
-        `Open the TikTok app → Drafts to add music and publish.`
-      : `<span class="warn">Post status: ${st}</span>`;
+    const lines = [];
+    const labels = { tiktok: "TikTok (draft)", facebook: "Facebook reel", instagram: "Instagram reel" };
+    for (const p of Object.keys(res.results || {})) {
+      const url = res.results[p] && res.results[p].publicUrl;
+      lines.push(`<span class="ok">✓ ${labels[p] || p} published${url ? ` — <a href="${url}" target="_blank">view</a>` : ""}</span>`);
+    }
+    for (const p of Object.keys(res.errors || {})) {
+      lines.push(`<span class="warn">✗ ${labels[p] || p}: ${res.errors[p]}</span>`);
+    }
+    if (res.results && res.results.tiktok) lines.push(`<span class="hint">TikTok → open the app → Drafts to add music and publish.</span>`);
+    $("#r-postresult").innerHTML = lines.join("<br>") || "No platforms selected.";
     renderReview();
   } catch (e) {
     $("#r-postresult").innerHTML = `<span class="warn">${e.message}</span>`;

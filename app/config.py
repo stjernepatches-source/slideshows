@@ -77,6 +77,15 @@ TEXT_STROKE_FRAC = float(os.getenv("TEXT_STROKE_FRAC", "0.12"))  # outline thick
 TEXT_SAFE_SIDE = float(os.getenv("TEXT_SAFE_SIDE", "0.07"))     # L/R margin
 TEXT_SAFE_TOP = float(os.getenv("TEXT_SAFE_TOP", "0.12"))       # text starts here
 TEXT_SAFE_BOTTOM = float(os.getenv("TEXT_SAFE_BOTTOM", "0.34"))  # reserved for UI
+TEXT_WAIT_TOP = float(os.getenv("TEXT_WAIT_TOP", "0.74"))       # "Wait for it" band
+
+# --- Reel video (Instagram / Facebook) --------------------------------------
+REEL_SECONDS_PER_SLIDE = float(os.getenv("REEL_SECONDS_PER_SLIDE", "3"))
+REEL_WIDTH = int(os.getenv("REEL_WIDTH", "1080"))
+REEL_HEIGHT = int(os.getenv("REEL_HEIGHT", "1920"))
+# A "Wait for it" hook on the first slide so the reel doesn't look frozen.
+REEL_WAIT_ENABLED = os.getenv("REEL_WAIT_ENABLED", "true").strip().lower() == "true"
+REEL_WAIT_TEXT = os.getenv("REEL_WAIT_TEXT", "Wait for it")
 
 # --- Brand / CTA ------------------------------------------------------------
 # The post caption always opens with a casual, non-salesy nudge to this site.
@@ -85,6 +94,13 @@ SITE_URL = os.getenv("SITE_URL", "nordiva.ai")
 # --- Blotato (posts to TikTok as drafts; no TikTok app audit needed) ---------
 BLOTATO_API_KEY = os.getenv("BLOTATO_API_KEY", "")
 BLOTATO_TIKTOK_ACCOUNT_ID = os.getenv("BLOTATO_TIKTOK_ACCOUNT_ID", "")
+BLOTATO_FACEBOOK_ACCOUNT_ID = os.getenv("BLOTATO_FACEBOOK_ACCOUNT_ID", "")
+BLOTATO_INSTAGRAM_ACCOUNT_ID = os.getenv("BLOTATO_INSTAGRAM_ACCOUNT_ID", "")
+# Facebook Page id to post the reel to (the numeric FB Page id, not the Blotato
+# account id). Get it from GET /v2/users/me/accounts/{id}/subaccounts.
+FACEBOOK_PAGE_ID = os.getenv("FACEBOOK_PAGE_ID", "")
+# Instagram reels: also show the reel on the profile feed grid.
+INSTAGRAM_SHARE_TO_FEED = os.getenv("INSTAGRAM_SHARE_TO_FEED", "true").strip().lower() == "true"
 # Whether to declare the post as AI-generated to TikTok. Default False to match
 # the "don't get auto-flagged" goal.
 TIKTOK_LABEL_AI = os.getenv("TIKTOK_LABEL_AI", "false").strip().lower() == "true"
