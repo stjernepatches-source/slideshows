@@ -14,11 +14,36 @@ from __future__ import annotations
 from typing import Optional
 
 import io
+import re
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
 from . import config
+
+# Emoji / pictograph code blocks — stripped from on-image text (the bold font
+# can't render them anyway, and the user wants clean text on the pics). The
+# post caption keeps its emojis; this only affects burned-in slide text.
+_EMOJI = re.compile(
+    "["
+    "\U0001F300-\U0001FAFF"   # symbols, emoticons, transport, supplemental, ext-A
+    "\U0001F1E6-\U0001F1FF"   # regional indicator (flags)
+    "\U00002600-\U000027BF"   # misc symbols + dingbats (incl. sparkles)
+    "\U00002B00-\U00002BFF"   # stars, arrows
+    "\U00002300-\U000023FF"   # misc technical (hourglass, etc.)
+    "\U00002190-\U000021FF"   # arrows
+    "\U0000FE00-\U0000FE0F"   # variation selectors
+    "\U00002000-\U0000200D"   # zero-width joiner + exotic spaces
+    "\U000024C2\U00002122\U00002139"
+    "]+",
+    flags=re.UNICODE,
+)
+
+
+def _strip_emoji(text: str) -> str:
+    """Remove emojis/pictographs and tidy the whitespace they leave behind."""
+    cleaned = _EMOJI.sub("", text)
+    return re.sub(r"[ \t]{2,}", " ", cleaned).strip(" \t-—–·")
 
 # Candidate bold fonts, best match first. Arial Bold is the closest common
 # stand-in for TikTok's caption font. Override with TIKTOK_FONT in .env.
@@ -102,8 +127,9 @@ def compose_caption(image: bytes, text: Optional[str]) -> bytes:
     """Return JPEG bytes of the image with `text` burned on (or unchanged if no
     text). Output carries no metadata (fresh Pillow encode)."""
     img = Image.open(io.BytesIO(image)).convert("RGB")
-    if text and text.strip():
-        _draw_caption(img, text.strip())
+    text = _strip_emoji(text) if text else ""
+    if text:
+        _draw_caption(img, text)
     out = io.BytesIO()
     img.save(out, format="JPEG", quality=92, optimize=True)
     return out.getvalue()
