@@ -14,6 +14,7 @@ API: base https://backend.blotato.com/v2, header `blotato-api-key`.
 from __future__ import annotations
 
 import base64
+import time
 from typing import Any, Optional
 
 import httpx
@@ -139,4 +140,33 @@ def post_tiktok_draft(
     with httpx.Client(timeout=120) as c:
         r = c.post(f"{BASE}/posts", headers=_headers(), json=payload)
         r.raise_for_status()
+        resp = r.json()
+
+    sub_id = resp.get("postSubmissionId")
+    if sub_id:
+        final = _await_submission(sub_id)
+        resp.update(final)
+        if final.get("status") == "failed":
+            raise RuntimeError(
+                "TikTok rejected the draft: " + final.get("errorMessage", "unknown error")
+            )
+    return resp
+
+
+def get_submission(submission_id: str) -> dict[str, Any]:
+    """Status of a submitted post: in-progress | published | failed."""
+    with httpx.Client(timeout=30) as c:
+        r = c.get(f"{BASE}/posts/{submission_id}", headers=_headers())
+        r.raise_for_status()
         return r.json()
+
+
+def _await_submission(submission_id: str, tries: int = 12, delay: float = 3.0) -> dict[str, Any]:
+    """Poll until the submission is published or failed (or we give up)."""
+    last: dict[str, Any] = {}
+    for _ in range(tries):
+        last = get_submission(submission_id)
+        if last.get("status") in ("published", "failed"):
+            return last
+        time.sleep(delay)
+    return last  # still in-progress; report whatever we have

@@ -177,9 +177,12 @@ $("#r-post").addEventListener("click", async () => {
       method: "POST",
       body: JSON.stringify({}),
     });
-    $("#r-postresult").innerHTML =
-      `<span class="ok">✓ Sent to TikTok as a DRAFT.</span> ` +
-      `Open the TikTok app → Drafts to add music and publish.`;
+    const st = (res.response && res.response.status) || "submitted";
+    const ok = st === "published" || st === "submitted" || st === "in-progress";
+    $("#r-postresult").innerHTML = ok
+      ? `<span class="ok">✓ Delivered to TikTok as a DRAFT.</span> ` +
+        `Open the TikTok app → Drafts to add music and publish.`
+      : `<span class="warn">Post status: ${st}</span>`;
     renderReview();
   } catch (e) {
     $("#r-postresult").innerHTML = `<span class="warn">${e.message}</span>`;
