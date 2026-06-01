@@ -50,4 +50,8 @@ jobs:
           SITE_URL: ${{ vars.SITE_URL || 'nordiva.ai' }}
           IMAGE_MODEL: ${{ vars.IMAGE_MODEL || 'seedream' }}
           LEAD_NAME: ${{ vars.LEAD_NAME || 'Jen' }}
+          # Which platforms each run posts to. Start safe (TikTok draft only);
+          # set the AUTO_PLATFORMS repo Variable to "tiktok,facebook,instagram"
+          # to go fully live. No code change needed.
+          AUTO_PLATFORMS: ${{ vars.AUTO_PLATFORMS || 'tiktok' }}
         run: python -m app.runner "${{ github.event.inputs.theme }}"
