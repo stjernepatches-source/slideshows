@@ -70,8 +70,14 @@ def build_comparison(face_images: list[bytes]) -> bytes:
     for face, box in zip(face_images, boxes):
         _paste_box(base, face, box)
 
-    # Normalize to the slide aspect (center-crop) so it matches the other slides.
+    # Letterbox the WHOLE results page onto a 9:16 canvas (contain, not crop) so
+    # the comparison cards are never cut off. Background matches the page color.
     from . import metadata
+    cw, ch = config.REEL_WIDTH, config.REEL_HEIGHT
+    scale = min(cw / base.width, ch / base.height)
+    resized = base.resize((max(1, round(base.width * scale)), max(1, round(base.height * scale))))
+    canvas = Image.new("RGB", (cw, ch), base.getpixel((2, 2)))
+    canvas.paste(resized, ((cw - resized.width) // 2, (ch - resized.height) // 2))
     out = io.BytesIO()
-    base.save(out, format="JPEG", quality=92, optimize=True)
-    return metadata.clean_image_bytes(out.getvalue(), aspect=config.ASPECT_RATIO)
+    canvas.save(out, format="JPEG", quality=92, optimize=True)
+    return metadata.clean_image_bytes(out.getvalue())
