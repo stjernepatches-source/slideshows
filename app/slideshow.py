@@ -284,10 +284,12 @@ def build_reel_video(show_id: str) -> Path:
     if not generated:
         raise ValueError("Generate the slides before building a reel.")
 
+    # "Wait for it" stays pinned to the bottom of EVERY slide so the stitched
+    # reel keeps retention the whole way through (not just the first frame).
+    bottom = config.REEL_WAIT_TEXT if config.REEL_WAIT_ENABLED else None
     frames: list[bytes] = []
-    for pos, s in enumerate(generated):
+    for s in generated:
         path = _slides_dir(show_id) / s["file"]
-        bottom = config.REEL_WAIT_TEXT if (pos == 0 and config.REEL_WAIT_ENABLED) else None
         frames.append(overlay.compose_file(path, s.get("caption", ""), bottom_text=bottom))
 
     out = _dir(show_id) / "reel.mp4"
