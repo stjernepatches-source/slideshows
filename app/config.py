@@ -68,7 +68,28 @@ DEFAULT_STYLE_PROMPT = (
 )
 STYLE_PROMPT = os.getenv("STYLE_PROMPT", DEFAULT_STYLE_PROMPT)
 
-# --- TikTok -----------------------------------------------------------------
+# --- On-image caption text --------------------------------------------------
+# TikTok-style burned-in text: bold white fill + black outline, kept in the
+# safe zone (clear of TikTok's UI). Fractions are of the image width/height.
+TIKTOK_FONT = os.getenv("TIKTOK_FONT", "/System/Library/Fonts/Supplemental/Arial Bold.ttf")
+TEXT_SIZE_FRAC = float(os.getenv("TEXT_SIZE_FRAC", "0.058"))    # ~big TikTok text
+TEXT_STROKE_FRAC = float(os.getenv("TEXT_STROKE_FRAC", "0.12"))  # outline thickness
+TEXT_SAFE_SIDE = float(os.getenv("TEXT_SAFE_SIDE", "0.07"))     # L/R margin
+TEXT_SAFE_TOP = float(os.getenv("TEXT_SAFE_TOP", "0.12"))       # text starts here
+TEXT_SAFE_BOTTOM = float(os.getenv("TEXT_SAFE_BOTTOM", "0.34"))  # reserved for UI
+
+# --- Brand / CTA ------------------------------------------------------------
+# The post caption always opens with a casual, non-salesy nudge to this site.
+SITE_URL = os.getenv("SITE_URL", "nordiva.ai")
+
+# --- Blotato (posts to TikTok as drafts; no TikTok app audit needed) ---------
+BLOTATO_API_KEY = os.getenv("BLOTATO_API_KEY", "")
+BLOTATO_TIKTOK_ACCOUNT_ID = os.getenv("BLOTATO_TIKTOK_ACCOUNT_ID", "")
+# Whether to declare the post as AI-generated to TikTok. Default False to match
+# the "don't get auto-flagged" goal.
+TIKTOK_LABEL_AI = os.getenv("TIKTOK_LABEL_AI", "false").strip().lower() == "true"
+
+# --- TikTok (legacy direct Content Posting API — optional) ------------------
 TIKTOK_CLIENT_KEY = os.getenv("TIKTOK_CLIENT_KEY", "")
 TIKTOK_CLIENT_SECRET = os.getenv("TIKTOK_CLIENT_SECRET", "")
 TIKTOK_REDIRECT_URI = os.getenv("TIKTOK_REDIRECT_URI", "http://localhost:8000/tiktok/callback")

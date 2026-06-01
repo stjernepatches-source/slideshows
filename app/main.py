@@ -9,12 +9,12 @@ import threading
 from pathlib import Path
 from typing import Optional, Any
 
-from fastapi import FastAPI, HTTPException, Request, UploadFile
+from fastapi import FastAPI, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import characters, config, metadata, slideshow, tiktok
+from . import blotato, characters, config, metadata, overlay, slideshow, tiktok
 
 config.ensure_dirs()
 
@@ -43,6 +43,9 @@ def get_config() -> dict[str, Any]:
         "exiftool": metadata.exiftool_available(),
         "anthropic_ready": bool(config.ANTHROPIC_API_KEY),
         "fal_ready": bool(config.FAL_KEY),
+        "site_url": config.SITE_URL,
+        "label_ai": config.TIKTOK_LABEL_AI,
+        "blotato_configured": blotato.is_configured(),
         "tiktok_configured": tiktok.is_configured(),
         "tiktok_connected": tiktok.is_connected(),
     }
@@ -119,8 +122,7 @@ class TextUpdate(BaseModel):
 
 
 class PostRequest(BaseModel):
-    public_base_url: Optional[str] = None  # e.g. https://abc.trycloudflare.com
-    direct: bool = False
+    account_id: Optional[str] = None  # override Blotato TikTok account if needed
 
 
 @app.get("/api/slideshows")
@@ -197,21 +199,30 @@ def api_update_text(show_id: str, body: TextUpdate) -> dict[str, Any]:
         raise HTTPException(404, "No such slideshow.")
 
 
+def _composited_slide(show_id: str, index: int) -> bytes:
+    """Slide bytes with its caption text burned on (review/post preview)."""
+    path = slideshow.slide_file(show_id, index)
+    if path is None:
+        raise HTTPException(404, "Slide not generated yet.")
+    show = slideshow.get_slideshow(show_id) or {}
+    caption = show.get("slides", [])[index].get("caption", "") if index < len(show.get("slides", [])) else ""
+    return overlay.compose_file(path, caption)
+
+
 @app.get("/api/slideshows/{show_id}/slides/{index}/image")
-def api_slide_image(show_id: str, index: int) -> FileResponse:
-    path = slideshow.slide_file(show_id, index)
-    if path is None:
-        raise HTTPException(404, "Slide not generated yet.")
-    return FileResponse(path)
+def api_slide_image(show_id: str, index: int) -> Response:
+    # no-store so caption edits show immediately on refresh
+    return Response(
+        _composited_slide(show_id, index),
+        media_type="image/jpeg",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
-# Public, stable image URL used when TikTok pulls images (PULL_FROM_URL).
+# Public, stable image URL (with text burned in), kept for the legacy TikTok path.
 @app.get("/public/{show_id}/{index}.jpg")
-def public_slide_image(show_id: str, index: int) -> FileResponse:
-    path = slideshow.slide_file(show_id, index)
-    if path is None:
-        raise HTTPException(404, "Slide not generated yet.")
-    return FileResponse(path, media_type="image/jpeg")
+def public_slide_image(show_id: str, index: int) -> Response:
+    return Response(_composited_slide(show_id, index), media_type="image/jpeg")
 
 
 # --- TikTok -----------------------------------------------------------------
@@ -242,42 +253,36 @@ def tiktok_callback(request: Request) -> HTMLResponse:
 
 
 @app.post("/api/slideshows/{show_id}/post")
-def api_post_show(show_id: str, body: PostRequest) -> dict[str, Any]:
+def api_post_show(show_id: str, body: PostRequest = PostRequest()) -> dict[str, Any]:
     show = slideshow.get_slideshow(show_id)
     if show is None:
         raise HTTPException(404, "No such slideshow.")
-    files = slideshow.ordered_slide_files(show_id)
-    if not files:
-        raise HTTPException(400, "Generate the slides before posting.")
-    if not tiktok.is_connected():
-        raise HTTPException(400, "Connect TikTok first (Settings → Connect TikTok).")
+    if not blotato.is_configured():
+        raise HTTPException(400, "Set BLOTATO_API_KEY in .env to post to TikTok.")
 
-    base = (body.public_base_url or "").rstrip("/")
-    if not base:
-        raise HTTPException(
-            400,
-            "TikTok pulls images from public URLs. Provide a public base URL "
-            "(e.g. a cloudflared/ngrok tunnel pointed at this app) verified in "
-            "your TikTok developer portal.",
-        )
-    image_urls = [
-        f"{base}/public/{show_id}/{i}.jpg" for i in range(len(show["slides"])) if show["slides"][i].get("file")
+    # Compose each slide with its caption text burned in, in slide order.
+    image_bytes = [
+        _composited_slide(show_id, i)
+        for i in range(len(show["slides"]))
+        if show["slides"][i].get("file")
     ]
+    if not image_bytes:
+        raise HTTPException(400, "Generate the slides before posting.")
 
     caption = show.get("post_caption", "")
     tags = " ".join(f"#{t.lstrip('#')}" for t in show.get("hashtags", []))
-    description = (caption + ("\n\n" + tags if tags else "")).strip()
+    text = (caption + ("\n\n" + tags if tags else "")).strip()
 
     try:
-        resp = tiktok.post_photos(
-            image_urls=image_urls,
+        resp = blotato.post_tiktok_draft(
+            image_bytes=image_bytes,
+            text=text,
+            account_id=body.account_id,
             title=show.get("title", ""),
-            description=description,
-            direct=body.direct,
         )
     except Exception as e:
-        raise HTTPException(400, f"TikTok post failed: {e}")
+        raise HTTPException(400, f"Blotato post failed: {e}")
 
-    info = {"direct": body.direct, "response": resp}
+    info = {"provider": "blotato", "draft": True, "response": resp}
     slideshow.mark_posted(show_id, info)
     return info

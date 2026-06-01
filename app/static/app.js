@@ -44,7 +44,11 @@ async function loadStatus() {
     <p>exiftool installed: ${yes(CONFIG.exiftool)} ${
       CONFIG.exiftool ? "" : '<span class="hint">(optional; Pillow re-encode still strips metadata)</span>'
     }</p>
-    <p>TikTok configured: ${yes(CONFIG.tiktok_configured)} &nbsp; connected: ${yes(CONFIG.tiktok_connected)}</p>`;
+    <p>Site (caption CTA): <b>${CONFIG.site_url || "—"}</b></p>
+    <p>Posting via Blotato: ${yes(CONFIG.blotato_configured)} ${
+      CONFIG.blotato_configured ? '<span class="hint">(posts as TikTok drafts)</span>' : '<span class="hint">(set BLOTATO_API_KEY in .env)</span>'
+    }</p>
+    <p>Declare posts as AI to TikTok: ${CONFIG.label_ai ? '<span class="warn">yes</span>' : '<span class="ok">no</span>'}</p>`;
 }
 
 // --- create -----------------------------------------------------------------
@@ -166,21 +170,21 @@ $("#r-save").addEventListener("click", async () => {
 });
 
 $("#r-post").addEventListener("click", async () => {
-  $("#r-postresult").textContent = "Posting…";
+  $("#r-postresult").textContent = "Uploading to Blotato + creating TikTok draft…";
+  $("#r-post").disabled = true;
   try {
     const res = await api(`/api/slideshows/${CURRENT}/post`, {
       method: "POST",
-      body: JSON.stringify({
-        public_base_url: $("#r-baseurl").value.trim(),
-        direct: $("#r-direct").checked,
-      }),
+      body: JSON.stringify({}),
     });
-    $("#r-postresult").innerHTML = `<span class="ok">Sent to TikTok (${
-      res.direct ? "direct post" : "draft"
-    }).</span> ${JSON.stringify(res.response)}`;
+    $("#r-postresult").innerHTML =
+      `<span class="ok">✓ Sent to TikTok as a DRAFT.</span> ` +
+      `Open the TikTok app → Drafts to add music and publish.`;
     renderReview();
   } catch (e) {
     $("#r-postresult").innerHTML = `<span class="warn">${e.message}</span>`;
+  } finally {
+    $("#r-post").disabled = false;
   }
 });
 

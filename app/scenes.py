@@ -45,6 +45,18 @@ CHARACTER CONSISTENCY:
 - One-off background people who appear in only a single slide do NOT go in
   "cast"; just describe them inline.
 
+POST CAPTION:
+- "post_caption" is the TikTok description for the whole post. Its FIRST
+  SENTENCE must be a casual, non-salesy mention of the site (provided below) —
+  the kind of throwaway line a creator drops in the caption, NOT an ad.
+  Match this vibe (vary the wording, keep it short and lowercase-ish):
+    "site is {site} btw"
+    "site is {site} for those asking"
+    "({site} if anyone wants it)"
+    "btw it's {site}"
+  Then continue with a short hook line for the story. Do NOT put hashtags in
+  post_caption (they go in the separate "hashtags" field).
+
 OTHER RULES:
 - Break the story into exactly the requested number of slides, in order.
 - Each "image_prompt" is ONE self-contained moment. Never say "same as slide X".
@@ -87,6 +99,7 @@ def split_story(
 
     user_prompt = (
         f"Number of slides: {num_slides}\n\n"
+        f"Site for the caption CTA: {config.SITE_URL}\n\n"
         f"Available cast (use exact names when they appear):\n{cast_block}\n\n"
         f"Story:\n{story.strip()}"
     )

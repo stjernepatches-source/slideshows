@@ -60,12 +60,11 @@
         <button id="r-save">Save text</button>
       </fieldset>
       <fieldset>
-        <legend>Post to TikTok</legend>
-        <p class="hint">TikTok pulls images from a public URL. Paste a public base URL
-          (e.g. a cloudflared/ngrok tunnel to this app) verified in your TikTok dev portal.</p>
-        <label>Public base URL <input id="r-baseurl" placeholder="https://xxxx.trycloudflare.com" /></label>
-        <label class="inline"><input type="checkbox" id="r-direct" /> Direct post (audited apps only — otherwise saved as draft)</label>
-        <button id="r-post" class="primary">Approve & Post</button>
+        <legend>Post to TikTok (draft via Blotato)</legend>
+        <p class="hint">Uploads the slides (with caption text burned in) to Blotato and
+          creates a <b>draft</b> on your connected TikTok account. No TikTok app audit needed.
+          Then open TikTok → Drafts to add music and publish.</p>
+        <button id="r-post" class="primary">Approve & Send to TikTok drafts</button>
         <p class="hint" id="r-postresult"></p>
       </fieldset>
     </section>
