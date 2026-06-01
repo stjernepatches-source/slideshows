@@ -64,7 +64,12 @@ DEFAULT_STYLE_PROMPT = (
     "scene itself, filling the entire frame edge to edge. Do NOT draw any "
     "phone, smartphone, screen, monitor, device, frame, border, bezel, rounded "
     "corners, camera notch, status bar, clock, battery or signal icons, "
-    "screenshot, or any app/camera/phone interface of any kind."
+    "screenshot, or any app/camera/phone interface of any kind. "
+    "Do NOT render ANY text, letters, words, captions, subtitles, watermarks, "
+    "logos, signs, or numbers anywhere in the image. "
+    "Eyes must look natural and true-to-life — normal human iris color with "
+    "realistic catchlights; NEVER glowing, oversaturated, neon, or unnaturally "
+    "bright eyes."
 )
 STYLE_PROMPT = os.getenv("STYLE_PROMPT", DEFAULT_STYLE_PROMPT)
 
@@ -106,8 +111,10 @@ CTA_BOXES_FILE = PROJECT_ROOT / "assets" / "cta_boxes.json"  # [{x,y,w,h}, ...]
 LEAD_NAME = os.getenv("LEAD_NAME", "Jen")
 LEAD_DESCRIPTION = os.getenv(
     "LEAD_DESCRIPTION",
-    "woman in her early-to-mid 30s, long dark brown hair, fair skin, blue-green "
-    "eyes, full lips, soft features; natural makeup, casual everyday outfits",
+    # Keep this minimal — her reference photos define the face (incl. eye color).
+    # Over-describing features (esp. eyes) makes the model exaggerate them.
+    "woman in her early-to-mid 30s, long dark brown hair, fair skin, soft "
+    "natural features; minimal makeup, casual everyday outfits",
 )
 LEAD_REF_DIR = PROJECT_ROOT / "assets" / "protagonist"
 
