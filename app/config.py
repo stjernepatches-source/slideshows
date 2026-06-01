@@ -91,6 +91,35 @@ REEL_WAIT_TEXT = os.getenv("REEL_WAIT_TEXT", "Wait for it")
 # The post caption always opens with a casual, non-salesy nudge to this site.
 SITE_URL = os.getenv("SITE_URL", "nordiva.ai")
 
+# The product the stories quietly build toward (the SMV comparison software).
+PRODUCT_NAME = os.getenv("PRODUCT_NAME", "Nordiva")
+PRODUCT_PITCH = os.getenv(
+    "PRODUCT_PITCH",
+    "a tool that compares two people's dating-market value (SMV) side by side",
+)
+# The comparison/CTA slide: a screenshot of your results page used as a template,
+# plus the pixel boxes where the two compared faces get pasted in.
+CTA_TEMPLATE = PROJECT_ROOT / "assets" / "cta_template.png"
+CTA_BOXES_FILE = PROJECT_ROOT / "assets" / "cta_boxes.json"  # [{x,y,w,h}, ...]
+
+# --- Fixed lead character (the SAME woman in every video) -------------------
+LEAD_NAME = os.getenv("LEAD_NAME", "Jen")
+LEAD_DESCRIPTION = os.getenv(
+    "LEAD_DESCRIPTION",
+    "woman in her early-to-mid 30s, long dark brown hair, fair skin, blue-green "
+    "eyes, full lips, soft features; natural makeup, casual everyday outfits",
+)
+LEAD_REF_DIR = PROJECT_ROOT / "assets" / "protagonist"
+
+# --- Story ideation (Grok / xAI) -------------------------------------------
+XAI_API_KEY = os.getenv("XAI_API_KEY", "")
+GROK_MODEL = os.getenv("GROK_MODEL", "grok-4")
+
+# --- Automation (hands-off scheduled runs) ----------------------------------
+AUTO_PLATFORMS = [p.strip() for p in os.getenv(
+    "AUTO_PLATFORMS", "tiktok,facebook,instagram").split(",") if p.strip()]
+AUTO_NUM_SLIDES = int(os.getenv("AUTO_NUM_SLIDES", "7"))
+
 # --- Blotato (posts to TikTok as drafts; no TikTok app audit needed) ---------
 BLOTATO_API_KEY = os.getenv("BLOTATO_API_KEY", "")
 BLOTATO_TIKTOK_ACCOUNT_ID = os.getenv("BLOTATO_TIKTOK_ACCOUNT_ID", "")
@@ -126,6 +155,18 @@ def ensure_dirs() -> None:
     """Create the runtime data directories if they don't exist yet."""
     CAST_DIR.mkdir(parents=True, exist_ok=True)
     SLIDESHOWS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def lead_reference_paths() -> list[Path]:
+    """The fixed lead woman's reference images (committed under assets/)."""
+    if not LEAD_REF_DIR.exists():
+        return []
+    exts = {".jpg", ".jpeg", ".png", ".webp"}
+    return sorted(p for p in LEAD_REF_DIR.iterdir() if p.suffix.lower() in exts)
+
+
+def lead_available() -> bool:
+    return len(lead_reference_paths()) > 0
 
 
 def resolve_image_endpoint(model: Optional[str] = None) -> str:

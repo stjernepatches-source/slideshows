@@ -35,7 +35,10 @@ snapshot pulled straight from a normal person's camera roll:
   framing, NOT a picture of a phone or its screen.
 
 CHARACTER CONSISTENCY:
-- First identify the small set of RECURRING people in the story (usually 1-3).
+- The FIRST cast member listed below is the FIXED LEAD and protagonist of EVERY
+  story. She must appear in most slides; always tag her exact name in
+  "characters" and restate her physical description in those image prompts.
+- Then identify the small set of OTHER recurring people in the story (usually 1-2).
   For each, write a SHORT, FIXED physical description that never changes:
   approximate age, build, hair (color/length/style), notable features, and a
   default everyday outfit. Put these in the top-level "cast" array.
@@ -57,6 +60,15 @@ POST CAPTION:
   Then continue with a short hook line for the story. Do NOT put hashtags in
   post_caption (they go in the separate "hashtags" field).
 
+COMPARISON / CTA SLIDE:
+- Exactly ONE slide is the payoff where two people get compared on their
+  dating-market value using the product. Mark that slide "type": "comparison"
+  and set "compare": ["Name1", "Name2"] to the two people compared (use exact
+  cast names; the lead can be one of them). Its "image_prompt" can be brief
+  (it's replaced by the product's results template) but its "caption" should be
+  the punchy on-screen line for that reveal. All other slides are "type": "photo".
+- Build toward it naturally (curiosity / pettiness / closure), never salesy.
+
 OTHER RULES:
 - Break the story into exactly the requested number of slides, in order.
 - Each "image_prompt" is ONE self-contained moment. Never say "same as slide X".
@@ -69,7 +81,8 @@ Return ONLY valid JSON, no prose, in exactly this shape:
     {"name": "ShortName", "description": "fixed physical description + default outfit"}
   ],
   "slides": [
-    {"image_prompt": "...", "caption": "...", "characters": ["ShortName", ...]}
+    {"image_prompt": "...", "caption": "...", "characters": ["ShortName", ...],
+     "type": "photo", "compare": []}
   ],
   "post_caption": "suggested TikTok caption",
   "hashtags": ["tag", "tag", ...]
@@ -95,7 +108,10 @@ def split_story(
 ) -> dict[str, Any]:
     """Return {slides:[...], post_caption, hashtags} for the given story."""
     cast = cast or []
-    cast_block = "\n".join(f"- {c['name']}: {c['description']}" for c in cast) or "(none)"
+    # The fixed lead is ALWAYS first, so the writer treats her as protagonist.
+    lead_line = f"- {config.LEAD_NAME} (FIXED LEAD): {config.LEAD_DESCRIPTION}"
+    others = [f"- {c['name']}: {c['description']}" for c in cast if c["name"] != config.LEAD_NAME]
+    cast_block = "\n".join([lead_line, *others])
 
     user_prompt = (
         f"Number of slides: {num_slides}\n\n"
@@ -139,4 +155,6 @@ def _parse(text: str) -> dict[str, Any]:
     for s in data["slides"]:
         s.setdefault("caption", "")
         s.setdefault("characters", [])
+        s.setdefault("type", "photo")
+        s.setdefault("compare", [])
     return data

@@ -1,0 +1,53 @@
+name: Auto-post slideshows
+
+# Runs in GitHub's cloud on a schedule (your Mac can be off). Each run invents a
+# story with Grok, generates the slideshow with the fixed lead woman, builds the
+# comparison/CTA slide, strips AI metadata, and publishes: TikTok draft +
+# Facebook & Instagram reels. Two schedules a day = two posts a day.
+#
+# NOTE: scheduled workflows only run from the repository's DEFAULT branch, and
+# the secrets below must be added under Settings -> Secrets and variables ->
+# Actions. Times are UTC.
+
+on:
+  schedule:
+    - cron: "0 9 * * *"    # ~morning
+    - cron: "0 18 * * *"   # ~evening
+  workflow_dispatch:
+    inputs:
+      theme:
+        description: "Optional story theme"
+        required: false
+        default: ""
+
+concurrency:
+  group: autopost
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install system tools (ffmpeg + exiftool)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg libimage-exiftool-perl
+      - name: Install Python deps
+        run: pip install -r requirements.txt
+      - name: Generate + publish
+        env:
+          FAL_KEY: ${{ secrets.FAL_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          BLOTATO_API_KEY: ${{ secrets.BLOTATO_API_KEY }}
+          BLOTATO_TIKTOK_ACCOUNT_ID: ${{ secrets.BLOTATO_TIKTOK_ACCOUNT_ID }}
+          BLOTATO_INSTAGRAM_ACCOUNT_ID: ${{ secrets.BLOTATO_INSTAGRAM_ACCOUNT_ID }}
+          BLOTATO_FACEBOOK_ACCOUNT_ID: ${{ secrets.BLOTATO_FACEBOOK_ACCOUNT_ID }}
+          FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
+          SITE_URL: ${{ vars.SITE_URL || 'nordiva.ai' }}
+          IMAGE_MODEL: ${{ vars.IMAGE_MODEL || 'seedream' }}
+          LEAD_NAME: ${{ vars.LEAD_NAME || 'Jen' }}
+        run: python -m app.runner "${{ github.event.inputs.theme }}"

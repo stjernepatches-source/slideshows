@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import blotato, characters, config, metadata, overlay, slideshow, tiktok, video
+from . import blotato, characters, config, metadata, overlay, publish, slideshow, tiktok, video
 
 config.ensure_dirs()
 
@@ -266,80 +266,21 @@ def tiktok_callback(request: Request) -> HTMLResponse:
     )
 
 
-def _post_text(show: dict[str, Any]) -> str:
-    caption = show.get("post_caption", "")
-    tags = " ".join(f"#{t.lstrip('#')}" for t in show.get("hashtags", []))
-    return (caption + ("\n\n" + tags if tags else "")).strip()
-
-
 @app.post("/api/slideshows/{show_id}/post")
 def api_post_show(show_id: str, body: PostRequest = PostRequest()) -> dict[str, Any]:
-    show = slideshow.get_slideshow(show_id)
-    if show is None:
+    if slideshow.get_slideshow(show_id) is None:
         raise HTTPException(404, "No such slideshow.")
     if not blotato.is_configured():
         raise HTTPException(400, "Set BLOTATO_API_KEY in .env to post.")
-    if not any(s.get("file") for s in show["slides"]):
-        raise HTTPException(400, "Generate the slides before posting.")
-
-    platforms = body.platforms or ["tiktok"]
-    text = _post_text(show)
-    results: dict[str, Any] = {}
-    errors: dict[str, str] = {}
-
-    # TikTok: photo slideshow as a DRAFT (you add music + publish in-app).
-    if "tiktok" in platforms:
-        try:
-            image_bytes = [
-                _composited_slide(show_id, i)
-                for i in range(len(show["slides"]))
-                if show["slides"][i].get("file")
-            ]
-            results["tiktok"] = blotato.post_tiktok_draft(
-                image_bytes=image_bytes, text=text,
-                account_id=body.account_id, title=show.get("title", ""),
-            )
-        except Exception as e:
-            errors["tiktok"] = str(e)
-
-    # Facebook / Instagram: a stitched reel, posted directly.
-    if "facebook" in platforms or "instagram" in platforms:
-        try:
-            reel_path = slideshow.build_reel_video(show_id)
-            video_url = blotato.upload_video(reel_path.read_bytes())
-        except Exception as e:
-            for p in ("facebook", "instagram"):
-                if p in platforms:
-                    errors[p] = f"reel build/upload failed: {e}"
-            video_url = None
-
-        if video_url and "facebook" in platforms:
-            try:
-                page_id = body.facebook_page_id or config.FACEBOOK_PAGE_ID
-                if not page_id:
-                    raise RuntimeError("No Facebook Page id set (FACEBOOK_PAGE_ID).")
-                acct = blotato.find_account_id("facebook")
-                if not acct:
-                    raise RuntimeError("No Facebook account connected in Blotato.")
-                results["facebook"] = blotato.create_post(
-                    acct, text, [video_url], blotato.facebook_reel_target(page_id))
-            except Exception as e:
-                errors["facebook"] = str(e)
-
-        if video_url and "instagram" in platforms:
-            try:
-                acct = blotato.find_account_id("instagram")
-                if not acct:
-                    raise RuntimeError("No Instagram account connected in Blotato.")
-                results["instagram"] = blotato.create_post(
-                    acct, text, [video_url],
-                    blotato.instagram_reel_target(config.INSTAGRAM_SHARE_TO_FEED))
-            except Exception as e:
-                errors["instagram"] = str(e)
-
-    if results and not errors:
-        slideshow.mark_posted(show_id, {"provider": "blotato", "results": results})
-    return {"results": results, "errors": errors}
+    try:
+        return publish.publish(
+            show_id,
+            platforms=body.platforms or ["tiktok"],
+            facebook_page_id=body.facebook_page_id,
+            tiktok_account_id=body.account_id,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 @app.get("/api/slideshows/{show_id}/reel.mp4")

@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Any
 
-from . import characters, config, generate, metadata, overlay, scenes, video
+from . import characters, config, cta, generate, metadata, overlay, scenes, video
 from .storage import read_json, write_json
 
 
@@ -102,6 +102,8 @@ def create_slideshow(
                 "image_prompt": s["image_prompt"],
                 "caption": s.get("caption", ""),
                 "characters": s.get("characters", []),
+                "type": s.get("type", "photo"),       # "photo" | "comparison"
+                "compare": s.get("compare", []),       # two names for the CTA slide
                 "file": None,        # set once generated
                 "synthid": False,    # true if rendered by a SynthID model
             }
@@ -127,8 +129,8 @@ def _ensure_auto_cast(show: dict[str, Any]) -> None:
     changed = False
     for ch in cast:
         name = ch.get("name", "").strip()
-        if not name:
-            continue
+        if not name or name == config.LEAD_NAME:
+            continue  # the fixed lead uses her committed reference photos
         existing = auto.get(name)
         if existing and (refs_dir / Path(existing).name).exists():
             continue
@@ -151,33 +153,59 @@ def _ensure_auto_cast(show: dict[str, Any]) -> None:
 def _refs_for_slide(show: dict[str, Any], slide: dict[str, Any]) -> list[Path]:
     """Reference images for the characters named in this slide.
 
-    Two sources: a manually attached cast (the reusable cast library), or the
-    auto-generated per-character portraits created for this slideshow.
+    The fixed lead always uses her committed reference photos; other characters
+    come from the manually attached cast or the auto-generated portraits.
     """
     names = slide.get("characters", [])
+    refs: list[Path] = []
 
-    # Manual cast attached -> use the cast library (named match, else all).
+    if config.LEAD_NAME in names and config.lead_available():
+        refs.extend(config.lead_reference_paths())
+    others = [n for n in names if n != config.LEAD_NAME]
+
     if show.get("character_ids"):
         cast = [characters.get_character(cid) for cid in show["character_ids"]]
         cast = [c for c in cast if c]
-        named = {n.lower() for n in names}
-        chosen = [c for c in cast if c["name"].lower() in named] or cast
-        refs: list[Path] = []
-        for c in chosen:
-            refs.extend(characters.reference_paths(c["id"]))
-        return refs
+        named = {n.lower() for n in others}
+        for c in cast:
+            if c["name"].lower() in named:
+                refs.extend(characters.reference_paths(c["id"]))
+    else:
+        auto = show.get("auto_cast", {})
+        refs_dir = _refs_dir(show["id"])
+        for name in others:
+            rel = auto.get(name)
+            if rel and (refs_dir / Path(rel).name).exists():
+                refs.append(refs_dir / Path(rel).name)
+    return refs
 
-    # Auto cast -> the per-character reference portraits for this slideshow.
-    auto = show.get("auto_cast", {})
-    refs_dir = _refs_dir(show["id"])
-    out: list[Path] = []
-    for name in names:
-        rel = auto.get(name)
+
+def _face_for(show: dict[str, Any], name: str) -> Optional[bytes]:
+    """One representative photo (bytes) for a named person, for the CTA slide."""
+    paths = []
+    if name == config.LEAD_NAME and config.lead_available():
+        paths = config.lead_reference_paths()
+    elif show.get("character_ids"):
+        for cid in show["character_ids"]:
+            c = characters.get_character(cid)
+            if c and c["name"].lower() == name.lower():
+                paths = characters.reference_paths(c["id"])
+                break
+    else:
+        rel = (show.get("auto_cast") or {}).get(name)
         if rel:
-            p = refs_dir / Path(rel).name
-            if p.exists():
-                out.append(p)
-    return out
+            p = _refs_dir(show["id"]) / Path(rel).name
+            paths = [p] if p.exists() else []
+    return paths[0].read_bytes() if paths else None
+
+
+def _build_comparison_slide(show: dict[str, Any], slide: dict[str, Any]) -> bytes:
+    """Composite the two compared people's faces into the CTA results template."""
+    names = slide.get("compare") or slide.get("characters", [])[:2]
+    faces = [f for f in (_face_for(show, n) for n in names) if f]
+    if not faces:
+        raise RuntimeError("No faces available for the comparison slide.")
+    return cta.build_comparison(faces)
 
 
 def generate_slide(show_id: str, index: int) -> dict[str, Any]:
@@ -190,12 +218,15 @@ def generate_slide(show_id: str, index: int) -> dict[str, Any]:
     model = show["model"]
     aspect = show["aspect"]
 
-    raw = generate.generate_slide(
-        slide["image_prompt"],
-        reference_paths=_refs_for_slide(show, slide),
-        model=model,
-        aspect=aspect,
-    )
+    if slide.get("type") == "comparison" and cta.is_ready():
+        raw = _build_comparison_slide(show, slide)
+    else:
+        raw = generate.generate_slide(
+            slide["image_prompt"],
+            reference_paths=_refs_for_slide(show, slide),
+            model=model,
+            aspect=aspect,
+        )
 
     fname = f"{index:02d}.jpg"
     out = _slides_dir(show_id) / fname
