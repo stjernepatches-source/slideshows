@@ -180,10 +180,20 @@ def create_post(
     }
     last_msg = ""
     for attempt in range(1, attempts + 1):
-        with httpx.Client(timeout=120) as c:
-            r = c.post(f"{BASE}/posts", headers=_headers(), json=payload)
-            r.raise_for_status()
-            resp = r.json()
+        # The POST itself can return a transient 4xx/5xx (Blotato has handed back
+        # spurious 422s that succeed on retry). Capture the body and retry those.
+        try:
+            with httpx.Client(timeout=120) as c:
+                r = c.post(f"{BASE}/posts", headers=_headers(), json=payload)
+                r.raise_for_status()
+                resp = r.json()
+        except httpx.HTTPStatusError as e:
+            code = e.response.status_code
+            last_msg = f"Blotato HTTP {code}: {e.response.text[:300]}"
+            if code in (422, 429, 500, 502, 503, 504) and attempt < attempts:
+                time.sleep(5 * attempt)
+                continue
+            raise RuntimeError(last_msg)
 
         sub_id = resp.get("postSubmissionId")
         if not (poll and sub_id):
