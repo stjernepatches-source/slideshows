@@ -54,6 +54,9 @@ _FONT_CANDIDATES = [
     "/Library/Fonts/Arial Bold.ttf",
     "/System/Library/Fonts/HelveticaNeue.ttc",
     "/System/Library/Fonts/Helvetica.ttc",
+    # Linux (GitHub Actions cloud) — Liberation Sans is metrically Arial.
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
 ]
 
 
@@ -88,17 +91,20 @@ def _draw_caption(
     text: str,
     top_frac: Optional[float] = None,
     bottom_reserve: Optional[float] = None,
+    size_frac: Optional[float] = None,
 ) -> None:
     """Draw wrapped, centered, white-with-black-outline text in a safe band.
 
     top_frac        = where the text block starts (fraction of height)
     bottom_reserve  = fraction of height kept clear at the bottom (UI zone)
+    size_frac       = starting font size as a fraction of height (auto-shrinks)
     """
     w, h = img.size
     draw = ImageDraw.Draw(img)
 
     top_frac = config.TEXT_SAFE_TOP if top_frac is None else top_frac
     bottom_reserve = config.TEXT_SAFE_BOTTOM if bottom_reserve is None else bottom_reserve
+    size_frac = config.TEXT_SIZE_FRAC if size_frac is None else size_frac
 
     side = config.TEXT_SAFE_SIDE * w          # left/right margin
     max_w = w - 2 * side
@@ -107,7 +113,7 @@ def _draw_caption(
 
     # Pick the largest font size (from a sensible cap downward) whose wrapped
     # lines fit the width AND don't run past the bottom safe limit.
-    size = max(16, int(h * config.TEXT_SIZE_FRAC))
+    size = max(16, int(h * size_frac))
     while size >= 16:
         font = _font(size)
         lines = _wrap(draw, text, font, max_w)
@@ -139,10 +145,11 @@ def compose_caption(
     image: bytes,
     text: Optional[str],
     bottom_text: Optional[str] = None,
+    brand_text: Optional[str] = None,
 ) -> bytes:
-    """Return JPEG bytes with `text` burned near the top and optional
-    `bottom_text` (e.g. "Wait for it") burned lower down. Emojis are stripped
-    from both. Output carries no metadata (fresh Pillow encode)."""
+    """Return JPEG bytes with `text` burned near the top, optional `bottom_text`
+    (e.g. "Wait for it") lower down, and an optional small `brand_text` handle in
+    the bottom third. Emojis are stripped. Output carries no metadata."""
     img = Image.open(io.BytesIO(image)).convert("RGB")
     text = _strip_emoji(text) if text else ""
     if text:
@@ -150,11 +157,22 @@ def compose_caption(
     bt = _strip_emoji(bottom_text) if bottom_text else ""
     if bt:
         _draw_caption(img, bt, top_frac=config.TEXT_WAIT_TOP, bottom_reserve=0.06)
+    if brand_text:
+        _draw_caption(
+            img, brand_text,
+            top_frac=config.TEXT_BRAND_TOP, bottom_reserve=0.04,
+            size_frac=config.TEXT_BRAND_SIZE_FRAC,
+        )
     out = io.BytesIO()
     img.save(out, format="JPEG", quality=92, optimize=True)
     return out.getvalue()
 
 
-def compose_file(path: Path, text: Optional[str], bottom_text: Optional[str] = None) -> bytes:
-    """Compose caption (+ optional bottom text) onto a slide file's bytes."""
-    return compose_caption(path.read_bytes(), text, bottom_text=bottom_text)
+def compose_file(
+    path: Path,
+    text: Optional[str],
+    bottom_text: Optional[str] = None,
+    brand_text: Optional[str] = None,
+) -> bytes:
+    """Compose caption (+ optional bottom + brand text) onto a slide file's bytes."""
+    return compose_caption(path.read_bytes(), text, bottom_text=bottom_text, brand_text=brand_text)

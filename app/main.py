@@ -219,8 +219,10 @@ def _composited_slide(show_id: str, index: int) -> bytes:
     if path is None:
         raise HTTPException(404, "Slide not generated yet.")
     show = slideshow.get_slideshow(show_id) or {}
-    caption = show.get("slides", [])[index].get("caption", "") if index < len(show.get("slides", [])) else ""
-    return overlay.compose_file(path, caption)
+    slides = show.get("slides", [])
+    slide = slides[index] if index < len(slides) else {}
+    return overlay.compose_file(
+        path, slide.get("caption", ""), brand_text=slideshow._brand_for(slide))
 
 
 @app.get("/api/slideshows/{show_id}/slides/{index}/image")

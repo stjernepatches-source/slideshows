@@ -23,8 +23,10 @@ FAL_KEY = os.getenv("FAL_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 # --- Model selection --------------------------------------------------------
-# Friendly name -> fal endpoint id. Seedream is the default because it does not
-# embed Google's SynthID invisible watermark (better for "don't get flagged").
+# Friendly name -> fal endpoint id. Default is nano-banana-pro: its faces/eyes
+# are far more photorealistic than Seedream's (which cooked eyes). Trade-off:
+# nano models embed Google's SynthID invisible watermark (can't be stripped).
+# Switch IMAGE_MODEL back to "seedream" in .env if avoiding SynthID matters more.
 IMAGE_MODELS = {
     "seedream": "fal-ai/bytedance/seedream/v4/edit",
     "nano": "fal-ai/nano-banana/edit",
@@ -41,7 +43,7 @@ IMAGE_MODELS_T2I = {
 # Models that embed Google's SynthID watermark (cannot be reliably stripped).
 SYNTHID_MODELS = {"nano", "nano-pro"}
 
-IMAGE_MODEL = os.getenv("IMAGE_MODEL", "seedream").strip().lower()
+IMAGE_MODEL = os.getenv("IMAGE_MODEL", "nano-pro").strip().lower()
 SCENE_MODEL = os.getenv("SCENE_MODEL", "claude-sonnet-4-6")
 ASPECT_RATIO = os.getenv("ASPECT_RATIO", "9:16")
 
@@ -83,12 +85,16 @@ STYLE_PROMPT = os.getenv("STYLE_PROMPT", DEFAULT_STYLE_PROMPT)
 # TikTok-style burned-in text: bold white fill + black outline, kept in the
 # safe zone (clear of TikTok's UI). Fractions are of the image width/height.
 TIKTOK_FONT = os.getenv("TIKTOK_FONT", "/System/Library/Fonts/Supplemental/Arial Bold.ttf")
-TEXT_SIZE_FRAC = float(os.getenv("TEXT_SIZE_FRAC", "0.058"))    # ~big TikTok text
+TEXT_SIZE_FRAC = float(os.getenv("TEXT_SIZE_FRAC", "0.045"))    # caption size (kept modest so it doesn't cover the subject)
 TEXT_STROKE_FRAC = float(os.getenv("TEXT_STROKE_FRAC", "0.12"))  # outline thickness
 TEXT_SAFE_SIDE = float(os.getenv("TEXT_SAFE_SIDE", "0.07"))     # L/R margin
 TEXT_SAFE_TOP = float(os.getenv("TEXT_SAFE_TOP", "0.12"))       # text starts here
 TEXT_SAFE_BOTTOM = float(os.getenv("TEXT_SAFE_BOTTOM", "0.34"))  # reserved for UI
 TEXT_WAIT_TOP = float(os.getenv("TEXT_WAIT_TOP", "0.74"))       # "Wait for it" band
+# Small brand handle burned low on each (non-CTA) slide + reel frame.
+BRAND_TAG = os.getenv("BRAND_TAG", os.getenv("SITE_URL", "nordiva.ai"))
+TEXT_BRAND_TOP = float(os.getenv("TEXT_BRAND_TOP", "0.88"))     # bottom-third band
+TEXT_BRAND_SIZE_FRAC = float(os.getenv("TEXT_BRAND_SIZE_FRAC", "0.026"))  # small
 
 # --- Reel video (Instagram / Facebook) --------------------------------------
 REEL_SECONDS_PER_SLIDE = float(os.getenv("REEL_SECONDS_PER_SLIDE", "3"))
@@ -108,10 +114,9 @@ PRODUCT_PITCH = os.getenv(
     "PRODUCT_PITCH",
     "a tool that compares two people's dating-market value (SMV) side by side",
 )
-# The comparison/CTA slide: a screenshot of your results page used as a template,
-# plus the pixel boxes where the two compared faces get pasted in.
-CTA_TEMPLATE = PROJECT_ROOT / "assets" / "cta_template.png"
-CTA_BOXES_FILE = PROJECT_ROOT / "assets" / "cta_boxes.json"  # [{x,y,w,h}, ...]
+# The comparison/CTA slide is now rendered in code as the product's results
+# screen (see app/cta.py): two faces, a dynamic SCORE /10 each, and trait tags
+# generated per story by the scene writer. No static template needed.
 
 # --- Fixed lead character (the SAME woman in every video) -------------------
 LEAD_NAME = os.getenv("LEAD_NAME", "Jen")

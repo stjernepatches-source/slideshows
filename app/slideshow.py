@@ -42,6 +42,26 @@ def _slug(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "char"
 
 
+def _show_lead(show: dict[str, Any]) -> dict[str, Any]:
+    """The fixed lead for this show (per-ICP); falls back to the global lead."""
+    return show.get("lead") or {
+        "name": config.LEAD_NAME,
+        "description": config.LEAD_DESCRIPTION,
+        "ref_dir": str(config.LEAD_REF_DIR),
+    }
+
+
+def _lead_paths(show: dict[str, Any]) -> list[Path]:
+    """This show's lead reference photos."""
+    d = Path(_show_lead(show)["ref_dir"])
+    if not d.is_absolute():
+        d = config.PROJECT_ROOT / d
+    if not d.exists():
+        return []
+    exts = {".jpg", ".jpeg", ".png", ".webp"}
+    return sorted(p for p in d.iterdir() if p.suffix.lower() in exts)
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -72,19 +92,30 @@ def create_slideshow(
     num_slides: int = 6,
     model: Optional[str] = None,
     aspect: Optional[str] = None,
+    lead: Optional[dict[str, Any]] = None,
+    icp_id: Optional[str] = None,
 ) -> dict[str, Any]:
-    """Create a slideshow record and run the scene split immediately."""
+    """Create a slideshow record and run the scene split immediately.
+
+    lead = {name, description, ref_dir} for the fixed protagonist (per-ICP).
+    """
     config.ensure_dirs()
     show_id = uuid.uuid4().hex[:12]
     cast = [c for c in (characters.get_character(cid) for cid in character_ids) if c]
 
-    plan = scenes.split_story(story, num_slides=num_slides, cast=cast)
+    lead = lead or _show_lead({})
+    plan = scenes.split_story(
+        story, num_slides=num_slides, cast=cast,
+        lead_name=lead["name"], lead_description=lead["description"],
+    )
 
     show = {
         "id": show_id,
         "title": title.strip() or "Untitled",
         "story": story,
         "character_ids": character_ids,
+        "lead": lead,
+        "icp_id": icp_id,
         "model": (model or config.IMAGE_MODEL),
         "aspect": (aspect or config.ASPECT_RATIO),
         "status": "draft",
@@ -104,6 +135,7 @@ def create_slideshow(
                 "characters": s.get("characters", []),
                 "type": s.get("type", "photo"),       # "photo" | "comparison"
                 "compare": s.get("compare", []),       # two names for the CTA slide
+                "scorecard": s.get("scorecard", {}),   # scores/traits for the CTA card
                 "file": None,        # set once generated
                 "synthid": False,    # true if rendered by a SynthID model
             }
@@ -126,11 +158,12 @@ def _ensure_auto_cast(show: dict[str, Any]) -> None:
         return
     auto = show.setdefault("auto_cast", {})
     refs_dir = _refs_dir(show["id"])
+    lead_name = _show_lead(show)["name"]
     changed = False
     for ch in cast:
         name = ch.get("name", "").strip()
-        if not name or name == config.LEAD_NAME:
-            continue  # the fixed lead uses her committed reference photos
+        if not name or name == lead_name:
+            continue  # the fixed lead uses its committed reference photos
         existing = auto.get(name)
         if existing and (refs_dir / Path(existing).name).exists():
             continue
@@ -159,9 +192,11 @@ def _refs_for_slide(show: dict[str, Any], slide: dict[str, Any]) -> list[Path]:
     names = slide.get("characters", [])
     refs: list[Path] = []
 
-    if config.LEAD_NAME in names and config.lead_available():
-        refs.extend(config.lead_reference_paths())
-    others = [n for n in names if n != config.LEAD_NAME]
+    lead_name = _show_lead(show)["name"]
+    lead_paths = _lead_paths(show)
+    if lead_name in names and lead_paths:
+        refs.extend(lead_paths)
+    others = [n for n in names if n != lead_name]
 
     if show.get("character_ids"):
         cast = [characters.get_character(cid) for cid in show["character_ids"]]
@@ -183,8 +218,8 @@ def _refs_for_slide(show: dict[str, Any], slide: dict[str, Any]) -> list[Path]:
 def _face_for(show: dict[str, Any], name: str) -> Optional[bytes]:
     """One representative photo (bytes) for a named person, for the CTA slide."""
     paths = []
-    if name == config.LEAD_NAME and config.lead_available():
-        paths = config.lead_reference_paths()
+    if name == _show_lead(show)["name"] and _lead_paths(show):
+        paths = _lead_paths(show)
     elif show.get("character_ids"):
         for cid in show["character_ids"]:
             c = characters.get_character(cid)
@@ -200,12 +235,16 @@ def _face_for(show: dict[str, Any], name: str) -> Optional[bytes]:
 
 
 def _build_comparison_slide(show: dict[str, Any], slide: dict[str, Any]) -> bytes:
-    """Composite the two compared people's faces into the CTA results template."""
-    names = slide.get("compare") or slide.get("characters", [])[:2]
+    """Render the product's results screen for the two compared people.
+
+    compare = [winner, loser] (winner first), so faces stay winner-first to line
+    up with the scorecard's winner/loser columns.
+    """
+    names = (slide.get("compare") or slide.get("characters", []))[:2]
     faces = [f for f in (_face_for(show, n) for n in names) if f]
     if not faces:
         raise RuntimeError("No faces available for the comparison slide.")
-    return cta.build_comparison(faces)
+    return cta.build_comparison(faces, names, slide.get("scorecard") or {})
 
 
 def generate_slide(show_id: str, index: int) -> dict[str, Any]:
@@ -294,6 +333,14 @@ def ordered_slide_files(show_id: str) -> list[Path]:
     return out
 
 
+def _brand_for(slide: dict[str, Any]) -> Optional[str]:
+    """No burned-in brand handle on slides. The CTA/comparison slide already
+    carries the Nordiva branding (header + footer), and stamping nordiva.ai onto
+    every other photo reads as salesy and breaks the candid-snapshot illusion.
+    Kept as a hook in case we ever want an opt-in handle again."""
+    return None
+
+
 def composited_slides(show_id: str) -> list[bytes]:
     """Each generated slide with its caption text burned in (post/preview)."""
     show = get_slideshow(show_id) or {}
@@ -301,7 +348,7 @@ def composited_slides(show_id: str) -> list[bytes]:
     for s in show.get("slides", []):
         if s.get("file"):
             path = _slides_dir(show_id) / s["file"]
-            frames.append(overlay.compose_file(path, s.get("caption", "")))
+            frames.append(overlay.compose_file(path, s.get("caption", ""), brand_text=_brand_for(s)))
     return frames
 
 
@@ -321,7 +368,8 @@ def build_reel_video(show_id: str) -> Path:
     frames: list[bytes] = []
     for s in generated:
         path = _slides_dir(show_id) / s["file"]
-        frames.append(overlay.compose_file(path, s.get("caption", ""), bottom_text=bottom))
+        frames.append(overlay.compose_file(
+            path, s.get("caption", ""), bottom_text=bottom, brand_text=_brand_for(s)))
 
     out = _dir(show_id) / "reel.mp4"
     return video.build_reel(frames, out)

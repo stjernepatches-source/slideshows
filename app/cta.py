@@ -1,83 +1,237 @@
-"""Build the comparison / CTA slide from your software's results page.
+"""Render the comparison / CTA slide as our software's results screen.
 
-You provide ONE screenshot of the results page as a fixed template
-(assets/cta_template.png) plus the pixel boxes where the two compared photos sit
-(assets/cta_boxes.json: a list of {"x","y","w","h"} in template pixels, in the
-same order the faces should fill them). For each story we paste that story's two
-characters' faces into the boxes — same branded layout, different people.
+This is NOT a static template anymore. We draw a clean phone-app "results"
+screen from scratch with Pillow so every value is dynamic and story-driven:
+the two compared people's faces, their SCORE /10, an X-FACTOR headline tag, and
+a short list of up/down trait rows. The scene writer (scenes.py) produces the
+numbers and traits for the specific story; here we just lay them out so the
+slide reads as a real screenshot of the product in use.
 
-No face-detection dependency: photos are center-cover-cropped to each box's
-aspect ratio. Boxes can optionally set "radius" for rounded corners.
+The whole frame is the app screen (light background + app header) so viewers
+read it as "they actually ran the tool", not an AI picture of a chart.
 """
 from __future__ import annotations
 
 import io
-import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 from . import config
 
+# --- palette (a clean, neutral product UI) ----------------------------------
+BG = (244, 245, 247)          # phone screen behind the card
+CARD = (255, 255, 255)        # the results card
+INK = (24, 26, 32)            # primary text
+MUTED = (140, 146, 156)       # labels / secondary text
+LINE = (232, 234, 238)        # hairlines / dividers
+ACCENT = (124, 92, 255)       # winner score + brand (purple)
+UP = (34, 178, 110)           # green, an improvement / strength
+DOWN = (150, 156, 166)        # muted, a weakness
+PILL_BG = (244, 241, 255)     # headline pill background (accent tint)
+PILL_INK = (108, 78, 240)
+
+_BOLD = [
+    config.TIKTOK_FONT,
+    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+    "/Library/Fonts/Arial Bold.ttf",
+    "/System/Library/Fonts/HelveticaNeue.ttc",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+]
+_REG = [
+    "/System/Library/Fonts/Supplemental/Arial.ttf",
+    "/Library/Fonts/Arial.ttf",
+    "/System/Library/Fonts/Helvetica.ttc",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+]
+
 
 def is_ready() -> bool:
-    """True when the template and box map are both present."""
-    return config.CTA_TEMPLATE.exists() and config.CTA_BOXES_FILE.exists()
+    """The card is drawn in code, so it's always available."""
+    return True
 
 
-def _load_boxes() -> list[dict[str, Any]]:
-    return json.loads(config.CTA_BOXES_FILE.read_text(encoding="utf-8"))
+def _font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont:
+    for path in (_BOLD if bold else _REG):
+        if path and Path(path).exists():
+            try:
+                return ImageFont.truetype(path, size)
+            except Exception:
+                continue
+    return ImageFont.load_default()
 
 
 def _cover_crop(img: Image.Image, w: int, h: int) -> Image.Image:
     """Resize+center-crop img to exactly w×h (object-fit: cover)."""
     img = img.convert("RGB")
-    src_w, src_h = img.size
-    scale = max(w / src_w, h / src_h)
-    new = img.resize((max(1, round(src_w * scale)), max(1, round(src_h * scale))))
+    sw, sh = img.size
+    scale = max(w / sw, h / sh)
+    new = img.resize((max(1, round(sw * scale)), max(1, round(sh * scale))))
     left = (new.width - w) // 2
     top = (new.height - h) // 2
     return new.crop((left, top, left + w, top + h))
 
 
-def _paste_box(base: Image.Image, face: bytes, box: dict[str, Any]) -> None:
-    x, y, w, h = int(box["x"]), int(box["y"]), int(box["w"]), int(box["h"])
-    crop = _cover_crop(Image.open(io.BytesIO(face)), w, h)
-    radius = int(box.get("radius", 0))
-    if radius > 0:
-        mask = Image.new("L", (w, h), 0)
-        ImageDraw.Draw(mask).rounded_rectangle([0, 0, w, h], radius=radius, fill=255)
-        base.paste(crop, (x, y), mask)
+def _rounded(img: Image.Image, radius: int) -> Image.Image:
+    """Apply rounded corners to an RGB image (returns RGBA)."""
+    mask = Image.new("L", img.size, 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, img.width, img.height], radius=radius, fill=255)
+    out = img.convert("RGBA")
+    out.putalpha(mask)
+    return out
+
+
+def _norm_traits(person: dict[str, Any]) -> list[tuple[str, bool]]:
+    """Return [(label, is_up)] for a person's traits, tolerant of shapes."""
+    out: list[tuple[str, bool]] = []
+    for t in (person.get("traits") or [])[:6]:
+        if isinstance(t, dict):
+            label = str(t.get("label", "")).strip()
+            up = bool(t.get("up", True))
+        else:
+            label = str(t).strip()
+            up = True
+        if label:
+            out.append((label, up))
+    return out
+
+
+def _draw_arrow(draw: ImageDraw.ImageDraw, x: int, cy: int, up: bool, size: int) -> None:
+    """Draw a small solid up/down triangle (no font-glyph dependency)."""
+    half = size // 2
+    color = UP if up else DOWN
+    if up:
+        pts = [(x, cy - half), (x - half, cy + half), (x + half, cy + half)]
     else:
-        base.paste(crop, (x, y))
+        pts = [(x - half, cy - half), (x + half, cy - half), (x, cy + half)]
+    draw.polygon(pts, fill=color)
 
 
-def build_comparison(face_images: list[bytes]) -> bytes:
-    """Composite the given faces into the template boxes; return JPEG bytes.
+def _draw_person(
+    base: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    col_x: int,
+    col_w: int,
+    top: int,
+    face: bytes,
+    person: dict[str, Any],
+    winner: bool,
+) -> None:
+    pad = 0
+    fx = col_x + pad
+    fw = col_w - 2 * pad
+    fh = int(fw * 0.72)
+    # Face
+    crop = _rounded(_cover_crop(Image.open(io.BytesIO(face)), fw, fh), 28)
+    base.paste(crop, (fx, top), crop)
 
-    Faces fill boxes in order; extra faces or boxes beyond the shorter list are
-    ignored. Output is normalized to the configured 9:16 reel/slide size and
-    carries no metadata.
+    y = top + fh + 34
+    # SCORE label
+    f_lbl = _font(26, bold=True)
+    draw.text((fx, y), "SCORE", font=f_lbl, fill=MUTED)
+    y += 38
+    # Big score + /10
+    score = person.get("score")
+    score_str = f"{float(score):.2f}" if isinstance(score, (int, float)) else str(score or "—")
+    f_num = _font(96, bold=True)
+    draw.text((fx, y), score_str, font=f_num, fill=(ACCENT if winner else INK))
+    num_w = draw.textlength(score_str, font=f_num)
+    f_den = _font(34, bold=True)
+    draw.text((fx + num_w + 8, y + 52), "/10", font=f_den, fill=MUTED)
+    y += 118
+
+    # X-FACTOR label
+    draw.text((fx, y), "X - F A C T O R", font=_font(22, bold=True), fill=MUTED)
+    y += 38
+    # Headline pill (+ tag)
+    headline = str(person.get("headline", "")).strip()
+    if headline:
+        f_pill = _font(28, bold=True)
+        txt = f"+ {headline}"
+        tw = draw.textlength(txt, font=f_pill)
+        ph = 52
+        draw.rounded_rectangle([fx, y, fx + tw + 36, y + ph], radius=ph // 2, fill=PILL_BG)
+        draw.text((fx + 18, y + ph // 2), txt, font=f_pill, fill=PILL_INK, anchor="lm")
+        y += ph + 22
+
+    # Trait rows
+    f_tr = _font(28, bold=False)
+    for label, up in _norm_traits(person):
+        cy = y + 18
+        _draw_arrow(draw, fx + 9, cy, up, 22)
+        draw.text((fx + 30, cy), label, font=f_tr, fill=(INK if up else MUTED), anchor="lm")
+        y += 44
+
+
+def build_comparison(
+    faces: list[bytes],
+    names: Optional[list[str]] = None,
+    scorecard: Optional[dict[str, Any]] = None,
+) -> bytes:
+    """Render the results screen for [winner, loser]; return JPEG bytes.
+
+    faces[0]/names[0] is the winner (higher score), faces[1] the loser. The
+    scorecard supplies each side's score/headline/traits; missing pieces fall
+    back to sensible defaults so the slide always renders.
     """
-    if not is_ready():
-        raise RuntimeError(
-            "CTA template not set up. Add assets/cta_template.png and "
-            "assets/cta_boxes.json (boxes for the comparison photos)."
-        )
-    base = Image.open(config.CTA_TEMPLATE).convert("RGB")
-    boxes = _load_boxes()
-    for face, box in zip(face_images, boxes):
-        _paste_box(base, face, box)
+    if not faces:
+        raise RuntimeError("No faces available for the comparison slide.")
+    scorecard = scorecard or {}
+    winner = dict(scorecard.get("winner") or {})
+    loser = dict(scorecard.get("loser") or {})
+    # Defaults so a thin/missing scorecard still produces a believable card.
+    winner.setdefault("score", 8.0)
+    loser.setdefault("score", 5.5)
 
-    # Letterbox the WHOLE results page onto a 9:16 canvas (contain, not crop) so
-    # the comparison cards are never cut off. Background matches the page color.
+    W, H = config.REEL_WIDTH, config.REEL_HEIGHT
+    base = Image.new("RGB", (W, H), BG)
+    draw = ImageDraw.Draw(base)
+
+    # --- card frame ---------------------------------------------------------
+    # Card sits in the lower-middle so the burned-in caption (added later by
+    # overlay.compose_caption near the top) has clear room above the faces.
+    mx = 36
+    cx0, cx1 = mx, W - mx
+    cy0, cy1 = 470, 1640
+    draw.rounded_rectangle([cx0, cy0, cx1, cy1], radius=44, fill=CARD)
+
+    # --- app header (sells "this is the real software") ---------------------
+    hx = cx0 + 44
+    hy = cy0 + 40
+    # brand dot + name (left), "Results" (right)
+    draw.ellipse([hx, hy + 4, hx + 30, hy + 34], fill=ACCENT)
+    draw.text((hx + 42, hy + 6), config.SITE_URL, font=_font(34, bold=True), fill=INK)
+    rtxt = "Results"
+    draw.text((cx1 - 44, hy + 8), rtxt, font=_font(30, bold=True), fill=MUTED, anchor="ra")
+    hdr_b = hy + 64
+    draw.line([cx0 + 32, hdr_b, cx1 - 32, hdr_b], fill=LINE, width=2)
+
+    # --- two columns --------------------------------------------------------
+    gutter = 40
+    inner = (cx1 - cx0) - 2 * 44
+    col_w = (inner - gutter) // 2
+    left_x = cx0 + 44
+    right_x = left_x + col_w + gutter
+    content_top = hdr_b + 40
+    names = names or ["", ""]
+    _draw_person(base, draw, left_x, col_w, content_top, faces[0], winner, winner=True)
+    if len(faces) > 1:
+        _draw_person(base, draw, right_x, col_w, content_top, faces[1], loser, winner=False)
+
+    # vertical divider between columns
+    div_x = left_x + col_w + gutter // 2
+    draw.line([div_x, content_top + 10, div_x, cy1 - 150], fill=LINE, width=2)
+
+    # --- footer CTA bar -----------------------------------------------------
+    fy = cy1 - 96
+    draw.line([cx0 + 32, fy - 24, cx1 - 32, fy - 24], fill=LINE, width=2)
+    cta = f"Compare yours at {config.SITE_URL}"
+    draw.text(((cx0 + cx1) // 2, fy + 18), cta, font=_font(30, bold=True), fill=ACCENT, anchor="mm")
+
     from . import metadata
-    cw, ch = config.REEL_WIDTH, config.REEL_HEIGHT
-    scale = min(cw / base.width, ch / base.height)
-    resized = base.resize((max(1, round(base.width * scale)), max(1, round(base.height * scale))))
-    canvas = Image.new("RGB", (cw, ch), base.getpixel((2, 2)))
-    canvas.paste(resized, ((cw - resized.width) // 2, (ch - resized.height) // 2))
     out = io.BytesIO()
-    canvas.save(out, format="JPEG", quality=92, optimize=True)
+    base.save(out, format="JPEG", quality=92, optimize=True)
     return metadata.clean_image_bytes(out.getvalue())

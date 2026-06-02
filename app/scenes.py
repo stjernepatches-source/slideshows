@@ -42,8 +42,8 @@ snapshot pulled straight from a normal person's camera roll:
 
 CHARACTER CONSISTENCY:
 - The FIRST cast member listed below is the FIXED LEAD and protagonist of EVERY
-  story. She must appear in most slides; always tag her exact name in
-  "characters" and restate her physical description in those image prompts.
+  story. They must appear in most slides; always tag their exact name in
+  "characters" and restate their physical description in those image prompts.
 - Then identify the small set of OTHER recurring people in the story (usually 1-2).
   For each, write a SHORT, FIXED physical description that never changes:
   approximate age, build, hair (color/length/style), notable features, and a
@@ -71,11 +71,38 @@ COMPARISON / CTA SLIDE:
   dating-market value using the product. Mark that slide "type": "comparison"
   and set "compare": ["Name1", "Name2"] to the two people compared (use exact
   cast names; the lead can be one of them). IMPORTANT: "compare"[0] is the
-  WINNER — the results template always declares the FIRST/left person the higher
+  WINNER — the results screen always puts the FIRST/left person as the higher
   score. Order it [higher-value person, lower-value person] and make the story's
-  reveal consistent with that outcome. Its "image_prompt" can be brief
-  (it's replaced by the product's results template) but its "caption" should be
-  the punchy on-screen line for that reveal. All other slides are "type": "photo".
+  reveal consistent with that outcome. All other slides are "type": "photo".
+- This slide is rendered as the PRODUCT'S OWN results screen (two faces, a
+  SCORE /10 each, and trait tags), so its "image_prompt" can be a brief
+  placeholder. What matters is the "scorecard" you fill in:
+    "scorecard": {
+      "winner": {"score": 8.05, "headline": "face + skin",
+                 "traits": [{"label": "clear skin", "up": true}, ...]},
+      "loser":  {"score": 5.48, "headline": "hair volume",
+                 "traits": [{"label": "thick hair", "up": true},
+                            {"label": "soft jawline", "up": false}, ...]}
+    }
+  Rules for the scorecard:
+  - Scores are X.XX out of 10 (two decimals). winner.score MUST be higher than
+    loser.score. Keep them believable: winner ~7.4-9.2, loser ~4.0-6.6, and the
+    gap should fit the story's drama.
+  - "headline" is a 1-3 word standout factor (shown as a "+ ..." pill), e.g.
+    "face + skin", "bone structure", "hair volume", "smile".
+  - "traits": 4-6 short tags per person, each {"label", "up"}. up=true is a
+    strength (green up-arrow), up=false is a weakness (down-arrow). The winner is
+    mostly strengths; the loser is mostly weaknesses (one token strength is ok).
+  - Choose trait labels ONLY from this vocabulary (keep wording verbatim):
+    strengths: clear skin, strong jawline, good symmetry, full lips,
+      defined cheekbones, bright eyes, thick hair, good proportions, sharp jaw,
+      even skin tone, strong brow, youthful look
+    weaknesses: hairline recedes, thinning hair, soft jawline, prominent nose,
+      tired eyes, weak chin, thin lips, uneven skin, asymmetry, lips average,
+      ears slightly prominent, dull skin
+- The "caption" is the punchy on-screen line for the reveal and MUST quote BOTH
+  scores using the EXACT scorecard numbers, e.g. "He left me (8.05) for her
+  (5.48)". Never use numbers that disagree with the scorecard.
 - Build toward it naturally (curiosity / pettiness / closure), never salesy.
 
 OTHER RULES:
@@ -114,12 +141,16 @@ def split_story(
     story: str,
     num_slides: int = 6,
     cast: Optional[list[dict[str, Any]]] = None,
+    lead_name: Optional[str] = None,
+    lead_description: Optional[str] = None,
 ) -> dict[str, Any]:
     """Return {slides:[...], post_caption, hashtags} for the given story."""
     cast = cast or []
-    # The fixed lead is ALWAYS first, so the writer treats her as protagonist.
-    lead_line = f"- {config.LEAD_NAME} (FIXED LEAD): {config.LEAD_DESCRIPTION}"
-    others = [f"- {c['name']}: {c['description']}" for c in cast if c["name"] != config.LEAD_NAME]
+    lead_name = lead_name or config.LEAD_NAME
+    lead_description = lead_description or config.LEAD_DESCRIPTION
+    # The fixed lead is ALWAYS first, so the writer treats them as protagonist.
+    lead_line = f"- {lead_name} (FIXED LEAD): {lead_description}"
+    others = [f"- {c['name']}: {c['description']}" for c in cast if c["name"] != lead_name]
     cast_block = "\n".join([lead_line, *others])
 
     user_prompt = (
@@ -166,4 +197,5 @@ def _parse(text: str) -> dict[str, Any]:
         s.setdefault("characters", [])
         s.setdefault("type", "photo")
         s.setdefault("compare", [])
+        s.setdefault("scorecard", {})
     return data

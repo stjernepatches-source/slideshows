@@ -1,57 +1,49 @@
 name: Auto-post slideshows
 
-# Runs in GitHub's cloud on a schedule (your Mac can be off). Each run invents a
-# story with Grok, generates the slideshow with the fixed lead woman, builds the
-# comparison/CTA slide, strips AI metadata, and publishes: TikTok draft +
-# Facebook & Instagram reels. Two schedules a day = two posts a day.
+# Runs in GitHub's cloud on a schedule (your Mac can be off). For each posting
+# time, a matrix job runs per ICP: invent a story tuned to that audience,
+# generate the slideshow with that ICP's fixed lead, strip AI metadata, and post
+# a TikTok draft to that ICP's account. 5 ICPs x 3 times = 15 posts/day.
 #
-# NOTE: scheduled workflows only run from the repository's DEFAULT branch, and
-# the secrets below must be added under Settings -> Secrets and variables ->
-# Actions. Times are UTC.
+# Times are CEST (UTC+2). Cron is UTC and does NOT auto-adjust for daylight
+# saving: at the late-Oct CET switch (UTC+1) shift these crons +1h to keep
+# 06:00/10:00/17:00 local. Secrets live in Settings -> Secrets -> Actions.
 
 on:
   schedule:
-    - cron: "0 9 * * *"    # ~morning
-    - cron: "0 18 * * *"   # ~evening
-  workflow_dispatch:
-    inputs:
-      theme:
-        description: "Optional story theme"
-        required: false
-        default: ""
+    - cron: "0 4 * * *"     # 06:00 CEST
+    - cron: "0 8 * * *"     # 10:00 CEST
+    - cron: "0 15 * * *"    # 17:00 CEST
+  workflow_dispatch: {}
 
 concurrency:
-  group: autopost
+  group: autopost-${{ github.event.schedule || 'manual' }}
   cancel-in-progress: false
 
 jobs:
   post:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        icp: [boys_16_22, boys_20_30, boys_30_40, girls_16_25, girls_25_40]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install system tools (ffmpeg + exiftool)
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg libimage-exiftool-perl
+      - name: Install system tools (ffmpeg + exiftool + fonts)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg libimage-exiftool-perl fonts-liberation fonts-dejavu-core
       - name: Install Python deps
         run: pip install -r requirements.txt
-      - name: Generate + publish
+      - name: Generate + post (${{ matrix.icp }})
         env:
           FAL_KEY: ${{ secrets.FAL_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
           BLOTATO_API_KEY: ${{ secrets.BLOTATO_API_KEY }}
-          BLOTATO_TIKTOK_ACCOUNT_ID: ${{ secrets.BLOTATO_TIKTOK_ACCOUNT_ID }}
-          BLOTATO_INSTAGRAM_ACCOUNT_ID: ${{ secrets.BLOTATO_INSTAGRAM_ACCOUNT_ID }}
-          BLOTATO_FACEBOOK_ACCOUNT_ID: ${{ secrets.BLOTATO_FACEBOOK_ACCOUNT_ID }}
-          FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
           SITE_URL: ${{ vars.SITE_URL || 'nordiva.ai' }}
-          IMAGE_MODEL: ${{ vars.IMAGE_MODEL || 'seedream' }}
-          LEAD_NAME: ${{ vars.LEAD_NAME || 'Jen' }}
-          # Which platforms each run posts to. Start safe (TikTok draft only);
-          # set the AUTO_PLATFORMS repo Variable to "tiktok,facebook,instagram"
-          # to go fully live. No code change needed.
-          AUTO_PLATFORMS: ${{ vars.AUTO_PLATFORMS || 'tiktok' }}
-        run: python -m app.runner "${{ github.event.inputs.theme }}"
+          IMAGE_MODEL: ${{ vars.IMAGE_MODEL || 'nano-pro' }}
+        run: python -m app.runner "${{ matrix.icp }}"
