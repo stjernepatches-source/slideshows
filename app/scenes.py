@@ -33,6 +33,12 @@ snapshot pulled straight from a normal person's camera roll:
 - Describe only the CONTENT of the photo. Never ask for phone UI, screenshots,
   status bars, or a phone/device frame. A "selfie" means close arm's-length
   framing, NOT a picture of a phone or its screen.
+- NEVER put the caption (or ANY words/quotes/text to appear in the image) into
+  the image_prompt. The on-screen caption is added separately. image_prompt =
+  visual scene only, with zero text-overlay instructions.
+- Avoid EXTREME face close-ups (they distort the eyes). Frame at least
+  head-and-shoulders or wider, with the subject's whole face comfortably in
+  frame (never cropped at the top of the head).
 
 CHARACTER CONSISTENCY:
 - The FIRST cast member listed below is the FIXED LEAD and protagonist of EVERY

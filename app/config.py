@@ -50,6 +50,12 @@ ASPECT_RATIO = os.getenv("ASPECT_RATIO", "9:16")
 # roll instead of glossy AI art. This is the single biggest lever on "does it
 # look AI-generated." Override the whole thing via STYLE_PROMPT in .env.
 DEFAULT_STYLE_PROMPT = (
+    "ABSOLUTE RULES (highest priority): (1) Render NO text of any kind — no "
+    "words, letters, captions, subtitles, quotes, watermarks, logos, signs, "
+    "numbers, or UI — anywhere in the image. (2) Eyes must be natural, real "
+    "human eyes with true skin-toned lids and normal iris color and realistic "
+    "catchlights — NEVER glassy, doll-like, airbrushed, plasticky, glowing, "
+    "neon, or oversaturated. "
     "A candid, casual amateur snapshot — the kind of ordinary everyday photo a "
     "normal person takes, not a professional shot. Flat, ordinary lighting "
     "(overcast, indoor, or plain daylight); NOT cinematic, no dramatic shadows, "
