@@ -86,7 +86,7 @@ STYLE_PROMPT = os.getenv("STYLE_PROMPT", DEFAULT_STYLE_PROMPT)
 # safe zone (clear of TikTok's UI). Fractions are of the image width/height.
 TIKTOK_FONT = os.getenv("TIKTOK_FONT", "/System/Library/Fonts/Supplemental/Arial Bold.ttf")
 TEXT_SIZE_FRAC = float(os.getenv("TEXT_SIZE_FRAC", "0.045"))    # caption size (kept modest so it doesn't cover the subject)
-TEXT_STROKE_FRAC = float(os.getenv("TEXT_STROKE_FRAC", "0.12"))  # outline thickness
+TEXT_STROKE_FRAC = float(os.getenv("TEXT_STROKE_FRAC", "0.06"))  # outline thickness (TikTok-default thin)
 TEXT_SAFE_SIDE = float(os.getenv("TEXT_SAFE_SIDE", "0.07"))     # L/R margin
 TEXT_SAFE_TOP = float(os.getenv("TEXT_SAFE_TOP", "0.12"))       # text starts here
 TEXT_SAFE_BOTTOM = float(os.getenv("TEXT_SAFE_BOTTOM", "0.34"))  # reserved for UI
