@@ -58,16 +58,20 @@ DEFAULT_STYLE_PROMPT = (
     "human eyes with true skin-toned lids and normal iris color and realistic "
     "catchlights — NEVER glassy, doll-like, airbrushed, plasticky, glowing, "
     "neon, or oversaturated. "
-    "A candid, casual amateur snapshot — the kind of ordinary everyday photo a "
-    "normal person takes, not a professional shot. Flat, ordinary lighting "
-    "(overcast, indoor, or plain daylight); NOT cinematic, no dramatic shadows, "
-    "no moody color grading, no golden-hour glow. Authentic and a little "
-    "imperfect: subtle lens smudge, mild grain and sensor noise, slightly soft "
-    "or imperfect focus, a touch of motion blur, real true-to-life skin with "
-    "pores, blemishes and stray hairs. Slightly awkward, unposed, off-center "
-    "framing. Plain, believable realism. Absolutely NOT: studio lighting, "
-    "professional retouching, glamour, HDR, glossy magazine look, polished AI "
-    "rendering, illustration, or 3D render. "
+    "This must look like a RANDOM photo pulled from a normal person's phone — "
+    "NOT a photoshoot, NOT a stock photo, NOT a content-creator shot. If it looks "
+    "nice or intentional, it's wrong. Boring, ordinary, sometimes unflattering. "
+    "Casual phone angles: mirror selfie, arm's-length selfie, or clearly taken by "
+    "a friend; often a slightly crooked horizon or off-center, badly-cropped "
+    "framing. Ugly ordinary lighting: flat overhead room light, dim indoor light, "
+    "or harsh on-camera FLASH with hard shadows and shine on skin — NOT soft, "
+    "NOT flattering, NOT golden hour, NOT cinematic. Imperfect exposure (a bit too "
+    "dark or slightly blown-out), mild grain and sensor noise, smartphone "
+    "over-sharpening, subtle motion blur, a smudged lens. Real lived-in cluttered "
+    "backgrounds (mess, random objects). Real true-to-life skin with pores, "
+    "blemishes, oil and stray hairs. Absolutely NOT: studio or soft window "
+    "lighting, shallow-depth bokeh, professional retouching, glamour, HDR, glossy "
+    "magazine/editorial look, polished AI rendering, illustration, or 3D render. "
     "VERY IMPORTANT: this is a normal full-frame photograph. Render ONLY the "
     "scene itself, filling the entire frame edge to edge. Do NOT draw any "
     "phone, smartphone, screen, monitor, device, frame, border, bezel, rounded "
@@ -80,6 +84,27 @@ DEFAULT_STYLE_PROMPT = (
     "bright eyes."
 )
 STYLE_PROMPT = os.getenv("STYLE_PROMPT", DEFAULT_STYLE_PROMPT)
+
+# --- Glow-up "before" state -------------------------------------------------
+# Many stories are before/after glow-ups. We only have GOOD reference photos, so
+# we generate ONE controlled, identity-locked "before" portrait per glow-up
+# subject (a full-physical down-glow) and reuse it for every pre-glow-up slide —
+# instead of letting each slide improvise the downgrade (which yields a different,
+# grotesquely fat/ugly person every time). Tune the severity here.
+GLOWDOWN_PROMPT = os.getenv(
+    "GLOWDOWN_PROMPT",
+    "Transform THIS EXACT person into a believable 'before a glow-up' version of "
+    "themselves — an unflattering, ordinary candid phone snapshot. Make them "
+    "noticeably heavier and softer: fuller rounder face, heavier cheeks, a soft "
+    "double chin, a fuller body. Dull uneven skin with mild blemishes and "
+    "redness, tired puffy under-eyes, unkempt greasy unstyled hair, no makeup, "
+    "thicker unshaped brows, a frumpy oversized ill-fitting outfit, flat "
+    "unflattering overhead fluorescent light. CRUCIAL: it must still be "
+    "UNMISTAKABLY THE SAME PERSON — keep the same identity, same eye color, same "
+    "underlying facial structure and same hair color; do NOT change their "
+    "ethnicity, age, or gender. Heavier and less groomed, but a real believable "
+    "person, NOT a grotesque caricature.",
+)
 
 # --- On-image caption text --------------------------------------------------
 # TikTok-style burned-in text: bold white fill + black outline, kept in the

@@ -28,6 +28,12 @@ snapshot pulled straight from a normal person's camera roll:
   "studio", "bokeh", "shallow depth of field", or any glossy/film-look words.
 - Lean casual and slightly imperfect: unposed body language, off-center or
   slightly awkward phone framing, normal rooms, real clutter.
+- SETTINGS must be mundane and unglamorous — bias toward boring real places:
+  a car, a bathroom mirror, a messy bedroom, a kitchen, a parking lot, a couch,
+  a work break room, a bus. AVOID "aesthetic" photoshoot-y scenes (tidy cafe
+  dates, soft golden window light, styled interiors) unless the story truly needs
+  one. Vary the shot type across slides: mirror selfie, arm's-length selfie, a
+  pic clearly taken by someone else, a slightly tilted candid.
 - Keep each prompt concrete and physical (who, doing what, where) and let the
   global phone-camera style handle the "look". Don't over-art-direct.
 - Describe only the CONTENT of the photo. Never ask for phone UI, screenshots,
@@ -54,6 +60,23 @@ CHARACTER CONSISTENCY:
 - One-off background people who appear in only a single slide do NOT go in
   "cast"; just describe them inline.
 
+GLOW-UP / BEFORE & AFTER:
+- Many stories are a glow-up arc: ONE person looks rough/heavier "before", then
+  transforms and looks great "after". If the story has this arc, set top-level
+  "glowup" to that ONE person's exact name (usually the FIXED LEAD); otherwise
+  set "glowup": "".
+- For EVERY slide, set "state": "before" or "after":
+  - "before" = the glow-up person is shown in their PRE-transformation state
+    (heavier, no makeup, unkempt, dull skin). Use for the early/setup slides.
+  - "after" = post-transformation (the good, groomed state). Use once the
+    glow-up has happened, and for ALL slides that don't feature the glow-up
+    person. Default to "after" when unsure.
+  - The SAME good reference photo defines them in both states — the system
+    generates the heavier "before" automatically. In a "before" slide's
+    image_prompt, describe the heavier/unkempt look in PLAIN, concrete terms
+    (messy bun, baggy hoodie, tired, fuller face). NEVER use cruel words like
+    "ugly"/"fat"/"disgusting" — it's the same person on a low day, pre-glow-up.
+
 POST CAPTION:
 - "post_caption" is the TikTok description for the whole post. Its FIRST
   SENTENCE must be a casual, non-salesy mention of the site (provided below) —
@@ -67,13 +90,18 @@ POST CAPTION:
   post_caption (they go in the separate "hashtags" field).
 
 COMPARISON / CTA SLIDE:
-- Exactly ONE slide is the payoff where two people get compared on their
-  dating-market value using the product. Mark that slide "type": "comparison"
-  and set "compare": ["Name1", "Name2"] to the two people compared (use exact
-  cast names; the lead can be one of them). IMPORTANT: "compare"[0] is the
-  WINNER — the results screen always puts the FIRST/left person as the higher
-  score. Order it [higher-value person, lower-value person] and make the story's
-  reveal consistent with that outcome. All other slides are "type": "photo".
+- Exactly ONE slide is the payoff where two faces get compared on their
+  dating-market value using the product. Mark that slide "type": "comparison".
+  It comes in two flavours — set "compare_mode" accordingly:
+  - "versus": TWO DIFFERENT people (e.g. the lead vs a rival). Set
+    "compare": ["Winner", "Loser"] to their exact names.
+  - "self": the SAME glow-up person, AFTER vs BEFORE (their own transformation).
+    Set "compare": ["GlowupName", "GlowupName"] (the glow-up person twice). The
+    card auto-shows their glowed-up face as the winner and their heavier "before"
+    face as the loser. Use this when the payoff is "look how far I came".
+- IMPORTANT: "compare"[0] is always the WINNER (higher score, left side); for
+  "self" mode that is the AFTER/glowed-up version. Order the story's reveal to
+  match. All other slides are "type": "photo".
 - This slide is rendered as the PRODUCT'S OWN results screen (two faces, a
   SCORE /10 each, and trait tags), so its "image_prompt" can be a brief
   placeholder. What matters is the "scorecard" you fill in:
@@ -100,9 +128,10 @@ COMPARISON / CTA SLIDE:
     weaknesses: hairline recedes, thinning hair, soft jawline, prominent nose,
       tired eyes, weak chin, thin lips, uneven skin, asymmetry, lips average,
       ears slightly prominent, dull skin
-- The "caption" is the punchy on-screen line for the reveal and MUST quote BOTH
-  scores using the EXACT scorecard numbers, e.g. "He left me (8.05) for her
-  (5.48)". Never use numbers that disagree with the scorecard.
+- The "caption" is a SHORT punchy headline (2-5 words) shown at the TOP of the
+  results card, e.g. "left one wins.", "the glow up is real", "she really chose
+  that??". Do NOT quote the scores in it — the card already shows both scores;
+  repeating them is redundant. Keep it lowercase-ish and casual.
 - Build toward it naturally (curiosity / pettiness / closure), never salesy.
 
 OTHER RULES:
@@ -116,9 +145,10 @@ Return ONLY valid JSON, no prose, in exactly this shape:
   "cast": [
     {"name": "ShortName", "description": "fixed physical description + default outfit"}
   ],
+  "glowup": "ShortName or empty string",
   "slides": [
     {"image_prompt": "...", "caption": "...", "characters": ["ShortName", ...],
-     "type": "photo", "compare": []}
+     "type": "photo", "state": "before|after", "compare": []}
   ],
   "post_caption": "suggested TikTok caption",
   "hashtags": ["tag", "tag", ...]
@@ -189,6 +219,7 @@ def _parse(text: str) -> dict[str, Any]:
         raise ValueError(f"Claude did not return JSON. Got:\n{text[:500]}")
     data = json.loads(text[start : end + 1])
     data.setdefault("cast", [])
+    data.setdefault("glowup", "")
     data.setdefault("slides", [])
     data.setdefault("post_caption", "")
     data.setdefault("hashtags", [])
@@ -196,6 +227,8 @@ def _parse(text: str) -> dict[str, Any]:
         s.setdefault("caption", "")
         s.setdefault("characters", [])
         s.setdefault("type", "photo")
+        s.setdefault("state", "after")
         s.setdefault("compare", [])
+        s.setdefault("compare_mode", "versus")
         s.setdefault("scorecard", {})
     return data
