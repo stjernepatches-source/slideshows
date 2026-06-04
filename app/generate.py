@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+import base64
 import os
 import re
 from pathlib import Path
@@ -19,6 +20,49 @@ from pathlib import Path
 import httpx
 
 from . import config
+
+# --- Grok (xAI Imagine) image backend ---------------------------------------
+# Aurora-based; better camera-roll realism than nano-pro, supports up to 3
+# reference images for character consistency, respects aspect_ratio, sync, and
+# (being xAI) carries NO Google SynthID watermark.
+XAI_IMAGE_GEN = "https://api.x.ai/v1/images/generations"
+XAI_IMAGE_EDIT = "https://api.x.ai/v1/images/edits"
+GROK_IMAGE_MODEL = "grok-imagine-image-quality"
+
+
+def _is_grok(model: Optional[str]) -> bool:
+    return (model or config.IMAGE_MODEL).strip().lower() == "grok"
+
+
+def _grok_image(prompt: str, aspect: str, reference_paths: Optional[list[Path]] = None) -> bytes:
+    """Generate (or reference-edit) one image via xAI's Imagine API."""
+    if not config.XAI_API_KEY:
+        raise RuntimeError("XAI_API_KEY is not set (needed for the grok image model).")
+    headers = {"Authorization": f"Bearer {config.XAI_API_KEY}", "Content-Type": "application/json"}
+    payload: dict = {"model": GROK_IMAGE_MODEL, "prompt": prompt, "aspect_ratio": aspect}
+
+    # Up to 3 reference images, passed as a list of base64 data-URI strings.
+    uris: list[str] = []
+    for p in (reference_paths or []):
+        if Path(p).exists():
+            mime = "image/png" if str(p).lower().endswith(".png") else "image/jpeg"
+            uris.append(f"data:{mime};base64," + base64.b64encode(Path(p).read_bytes()).decode())
+        if len(uris) == 3:
+            break
+
+    url = XAI_IMAGE_GEN
+    if uris:
+        # xAI quirk: a SINGLE reference must be one object; 2-3 must be a list of
+        # strings (a 1-element list is rejected).
+        payload["image"] = (
+            {"url": uris[0], "type": "image_url"} if len(uris) == 1 else uris
+        )
+        url = XAI_IMAGE_EDIT
+
+    with httpx.Client(timeout=180) as c:
+        r = c.post(url, headers=headers, json=payload)
+        r.raise_for_status()
+        return _download(r.json()["data"][0]["url"])
 
 # Words that make image models render phone/screenshot UI (bezel, status bar,
 # notch). We want RAW photos only, so neutralize them in any prompt before it
@@ -97,6 +141,9 @@ def _styled(prompt: str) -> str:
 
 def text_to_image(prompt: str, model: Optional[str] = None, aspect: Optional[str] = None) -> bytes:
     """Generate an image from a prompt alone (no reference image)."""
+    aspect = aspect or config.ASPECT_RATIO
+    if _is_grok(model):
+        return _grok_image(_styled(prompt), aspect)
     fal_client = _client()
     endpoint = config.resolve_t2i_endpoint(model)  # text-to-image, no input image
     aspect = aspect or config.ASPECT_RATIO
@@ -117,6 +164,10 @@ def generate_slide(
     If no references are supplied, falls back to plain text-to-image.
     """
     reference_paths = reference_paths or []
+    aspect = aspect or config.ASPECT_RATIO
+    if _is_grok(model):
+        refs = [p for p in reference_paths if Path(p).exists()]
+        return _grok_image(_styled(prompt), aspect, refs)
     if not reference_paths:
         return text_to_image(prompt, model=model, aspect=aspect)
 

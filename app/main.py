@@ -37,7 +37,7 @@ def index() -> HTMLResponse:
 def get_config() -> dict[str, Any]:
     return {
         "image_model": config.IMAGE_MODEL,
-        "models": list(config.IMAGE_MODELS),
+        "models": ["grok", *config.IMAGE_MODELS],
         "model_has_synthid": config.model_has_synthid(),
         "aspect_ratio": config.ASPECT_RATIO,
         "exiftool": metadata.exiftool_available(),

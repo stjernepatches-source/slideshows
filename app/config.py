@@ -23,10 +23,11 @@ FAL_KEY = os.getenv("FAL_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 # --- Model selection --------------------------------------------------------
-# Friendly name -> fal endpoint id. Default is nano-banana-pro: its faces/eyes
-# are far more photorealistic than Seedream's (which cooked eyes). Trade-off:
-# nano models embed Google's SynthID invisible watermark (can't be stripped).
-# Switch IMAGE_MODEL back to "seedream" in .env if avoiding SynthID matters more.
+# Default is "grok" (xAI Imagine / Aurora) — handled in app/generate.py, NOT a
+# fal endpoint. It gives the most authentic camera-roll realism, supports up to
+# 3 reference images for character consistency, and (being xAI) carries NO
+# Google SynthID watermark. The fal-hosted models below remain available:
+# nano-pro (great faces but adds SynthID), nano, seedream (no SynthID, weaker eyes).
 IMAGE_MODELS = {
     "seedream": "fal-ai/bytedance/seedream/v4/edit",
     "nano": "fal-ai/nano-banana/edit",
@@ -43,7 +44,7 @@ IMAGE_MODELS_T2I = {
 # Models that embed Google's SynthID watermark (cannot be reliably stripped).
 SYNTHID_MODELS = {"nano", "nano-pro"}
 
-IMAGE_MODEL = os.getenv("IMAGE_MODEL", "nano-pro").strip().lower()
+IMAGE_MODEL = os.getenv("IMAGE_MODEL", "grok").strip().lower()
 SCENE_MODEL = os.getenv("SCENE_MODEL", "claude-sonnet-4-6")
 ASPECT_RATIO = os.getenv("ASPECT_RATIO", "9:16")
 

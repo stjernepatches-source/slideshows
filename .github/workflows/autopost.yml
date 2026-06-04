@@ -45,5 +45,5 @@ jobs:
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
           BLOTATO_API_KEY: ${{ secrets.BLOTATO_API_KEY }}
           SITE_URL: ${{ vars.SITE_URL || 'nordiva.ai' }}
-          IMAGE_MODEL: ${{ vars.IMAGE_MODEL || 'nano-pro' }}
+          IMAGE_MODEL: ${{ vars.IMAGE_MODEL || 'grok' }}
         run: python -m app.runner "${{ matrix.icp }}"
