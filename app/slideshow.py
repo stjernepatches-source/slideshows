@@ -127,6 +127,10 @@ def create_slideshow(
         # filled in lazily at generation time.
         "cast": plan.get("cast", []),
         "auto_cast": {},
+        # The one person who physically transforms across the story (or "").
+        "glowup": plan.get("glowup", ""),
+        # name -> "refs/..." for generated heavier "before" portraits (lazy).
+        "before_refs": {},
         "slides": [
             {
                 "index": i,
@@ -134,7 +138,9 @@ def create_slideshow(
                 "caption": s.get("caption", ""),
                 "characters": s.get("characters", []),
                 "type": s.get("type", "photo"),       # "photo" | "comparison"
+                "state": s.get("state", "after"),     # "before" | "after" (glow-up)
                 "compare": s.get("compare", []),       # two names for the CTA slide
+                "compare_mode": s.get("compare_mode", "versus"),  # "versus" | "self"
                 "scorecard": s.get("scorecard", {}),   # scores/traits for the CTA card
                 "file": None,        # set once generated
                 "synthid": False,    # true if rendered by a SynthID model
@@ -183,68 +189,114 @@ def _ensure_auto_cast(show: dict[str, Any]) -> None:
         _save(show)
 
 
-def _refs_for_slide(show: dict[str, Any], slide: dict[str, Any]) -> list[Path]:
-    """Reference images for the characters named in this slide.
+def _after_refs(show: dict[str, Any], name: str) -> list[Path]:
+    """The GOOD (post-glow-up / default) reference photos for a named person.
 
-    The fixed lead always uses her committed reference photos; other characters
-    come from the manually attached cast or the auto-generated portraits.
+    The fixed lead uses her committed reference photos; others come from the
+    manually attached cast or the auto-generated portraits.
     """
-    names = slide.get("characters", [])
-    refs: list[Path] = []
-
-    lead_name = _show_lead(show)["name"]
-    lead_paths = _lead_paths(show)
-    if lead_name in names and lead_paths:
-        refs.extend(lead_paths)
-    others = [n for n in names if n != lead_name]
-
+    if name == _show_lead(show)["name"]:
+        # One strong lead photo is enough for identity and leaves room for a
+        # second character within image models' reference caps (Grok allows ≤2).
+        return _lead_paths(show)[:1]
     if show.get("character_ids"):
-        cast = [characters.get_character(cid) for cid in show["character_ids"]]
-        cast = [c for c in cast if c]
-        named = {n.lower() for n in others}
-        for c in cast:
-            if c["name"].lower() in named:
-                refs.extend(characters.reference_paths(c["id"]))
-    else:
-        auto = show.get("auto_cast", {})
-        refs_dir = _refs_dir(show["id"])
-        for name in others:
-            rel = auto.get(name)
-            if rel and (refs_dir / Path(rel).name).exists():
-                refs.append(refs_dir / Path(rel).name)
-    return refs
-
-
-def _face_for(show: dict[str, Any], name: str) -> Optional[bytes]:
-    """One representative photo (bytes) for a named person, for the CTA slide."""
-    paths = []
-    if name == _show_lead(show)["name"] and _lead_paths(show):
-        paths = _lead_paths(show)
-    elif show.get("character_ids"):
         for cid in show["character_ids"]:
             c = characters.get_character(cid)
             if c and c["name"].lower() == name.lower():
-                paths = characters.reference_paths(c["id"])
-                break
-    else:
-        rel = (show.get("auto_cast") or {}).get(name)
-        if rel:
-            p = _refs_dir(show["id"]) / Path(rel).name
-            paths = [p] if p.exists() else []
+                return list(characters.reference_paths(c["id"]))
+        return []
+    rel = (show.get("auto_cast") or {}).get(name)
+    if rel:
+        p = _refs_dir(show["id"]) / Path(rel).name
+        return [p] if p.exists() else []
+    return []
+
+
+def _glowdown_ref(show: dict[str, Any], name: str) -> Optional[Path]:
+    """A heavier, pre-glow-up "before" portrait of `name`, generated ONCE from
+    their good reference and cached, so every "before" slide stays the same
+    person instead of re-improvising the downgrade. Returns None if it can't be
+    built (caller falls back to the good reference)."""
+    before = show.setdefault("before_refs", {})
+    refs_dir = _refs_dir(show["id"])
+    rel = before.get(name)
+    if rel and (refs_dir / Path(rel).name).exists():
+        return refs_dir / Path(rel).name
+
+    after = _after_refs(show, name)
+    if not after:
+        return None
+    try:
+        img = generate.generate_slide(
+            config.GLOWDOWN_PROMPT,
+            reference_paths=[after[0]],
+            model=show["model"],
+            aspect=show["aspect"],
+        )
+    except Exception:
+        return None  # transient/model failure -> caller uses the good reference
+
+    fname = f"{_slug(name)}_before.jpg"
+    (refs_dir / fname).write_bytes(img)
+    before[name] = f"refs/{fname}"
+    _save(show)
+    return refs_dir / fname
+
+
+def _person_refs(show: dict[str, Any], name: str, state: str = "after") -> list[Path]:
+    """Reference photos for a person in a given glow-up state ("before"/"after")."""
+    if state == "before":
+        p = _glowdown_ref(show, name)
+        if p:
+            return [p]
+        # down-glow unavailable -> fall back to the good reference
+    return _after_refs(show, name)
+
+
+def _refs_for_slide(show: dict[str, Any], slide: dict[str, Any]) -> list[Path]:
+    """Reference images for the characters named in this slide, honoring the
+    glow-up state: only the glow-up subject swaps to its "before" portrait on
+    pre-transformation slides; everyone else always uses their good reference."""
+    glowup = show.get("glowup") or ""
+    slide_state = slide.get("state", "after")
+    refs: list[Path] = []
+    for name in slide.get("characters", []):
+        st = "before" if (name == glowup and slide_state == "before") else "after"
+        refs.extend(_person_refs(show, name, st))
+    return refs
+
+
+def _face_for(show: dict[str, Any], name: str, state: str = "after") -> Optional[bytes]:
+    """One representative photo (bytes) for a named person in a glow-up state,
+    for the CTA card."""
+    paths = _person_refs(show, name, state)
     return paths[0].read_bytes() if paths else None
 
 
 def _build_comparison_slide(show: dict[str, Any], slide: dict[str, Any]) -> bytes:
-    """Render the product's results screen for the two compared people.
+    """Render the product's results screen. Two flavours:
 
-    compare = [winner, loser] (winner first), so faces stay winner-first to line
-    up with the scorecard's winner/loser columns.
+    - "versus": two DIFFERENT people, compare = [winner, loser].
+    - "self":   the SAME glow-up person, AFTER (winner) vs BEFORE (loser).
+
+    Either way faces stay winner-first to line up with the scorecard columns.
     """
-    names = (slide.get("compare") or slide.get("characters", []))[:2]
-    faces = [f for f in (_face_for(show, n) for n in names) if f]
+    if slide.get("compare_mode") == "self":
+        picked = slide.get("compare") or [show.get("glowup", "")]
+        subject = picked[0] if picked else show.get("glowup", "")
+        names = [subject, subject]
+        faces = [
+            f for f in (_face_for(show, subject, "after"),
+                        _face_for(show, subject, "before")) if f
+        ]
+    else:
+        names = (slide.get("compare") or slide.get("characters", []))[:2]
+        faces = [f for f in (_face_for(show, n) for n in names) if f]
+
     if not faces:
         raise RuntimeError("No faces available for the comparison slide.")
-    return cta.build_comparison(faces, names, slide.get("scorecard") or {})
+    return cta.build_comparison(
+        faces, names, slide.get("scorecard") or {}, title=slide.get("caption") or "")
 
 
 def generate_slide(show_id: str, index: int) -> dict[str, Any]:
@@ -341,6 +393,15 @@ def _brand_for(slide: dict[str, Any]) -> Optional[str]:
     return None
 
 
+def _burn_caption(slide: dict[str, Any]) -> str:
+    """Caption text to burn over a slide. The comparison/CTA slide already
+    renders its headline inside the results card, so it gets no overlay caption
+    (otherwise the story line would double up on top of the card title)."""
+    if slide.get("type") == "comparison":
+        return ""
+    return slide.get("caption", "")
+
+
 def composited_slides(show_id: str) -> list[bytes]:
     """Each generated slide with its caption text burned in (post/preview)."""
     show = get_slideshow(show_id) or {}
@@ -348,7 +409,7 @@ def composited_slides(show_id: str) -> list[bytes]:
     for s in show.get("slides", []):
         if s.get("file"):
             path = _slides_dir(show_id) / s["file"]
-            frames.append(overlay.compose_file(path, s.get("caption", ""), brand_text=_brand_for(s)))
+            frames.append(overlay.compose_file(path, _burn_caption(s), brand_text=_brand_for(s)))
     return frames
 
 
@@ -369,7 +430,7 @@ def build_reel_video(show_id: str) -> Path:
     for s in generated:
         path = _slides_dir(show_id) / s["file"]
         frames.append(overlay.compose_file(
-            path, s.get("caption", ""), bottom_text=bottom, brand_text=_brand_for(s)))
+            path, _burn_caption(s), bottom_text=bottom, brand_text=_brand_for(s)))
 
     out = _dir(show_id) / "reel.mp4"
     return video.build_reel(frames, out)

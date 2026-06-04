@@ -15,6 +15,7 @@ from typing import Optional
 import base64
 import os
 import re
+import time
 from pathlib import Path
 
 import httpx
@@ -41,13 +42,15 @@ def _grok_image(prompt: str, aspect: str, reference_paths: Optional[list[Path]] 
     headers = {"Authorization": f"Bearer {config.XAI_API_KEY}", "Content-Type": "application/json"}
     payload: dict = {"model": GROK_IMAGE_MODEL, "prompt": prompt, "aspect_ratio": aspect}
 
-    # Up to 3 reference images, passed as a list of base64 data-URI strings.
+    # Reference images as base64 data-URI strings. xAI accepts at most 2 here:
+    # 3+ deterministically 400s ("url and file_id mutually exclusive"), despite
+    # the docs saying 3. Cap at 2.
     uris: list[str] = []
     for p in (reference_paths or []):
         if Path(p).exists():
             mime = "image/png" if str(p).lower().endswith(".png") else "image/jpeg"
             uris.append(f"data:{mime};base64," + base64.b64encode(Path(p).read_bytes()).decode())
-        if len(uris) == 3:
+        if len(uris) == 2:
             break
 
     url = XAI_IMAGE_GEN
@@ -59,10 +62,20 @@ def _grok_image(prompt: str, aspect: str, reference_paths: Optional[list[Path]] 
         )
         url = XAI_IMAGE_EDIT
 
-    with httpx.Client(timeout=180) as c:
-        r = c.post(url, headers=headers, json=payload)
-        r.raise_for_status()
-        return _download(r.json()["data"][0]["url"])
+    # xAI Imagine intermittently returns transient 400/429/5xx under load (the
+    # identical request succeeds on retry), so retry a few times with backoff.
+    last = ""
+    for attempt in range(1, 5):
+        with httpx.Client(timeout=180) as c:
+            r = c.post(url, headers=headers, json=payload)
+        if r.status_code == 200:
+            return _download(r.json()["data"][0]["url"])
+        last = f"xAI {r.status_code}: {r.text[:200]}"
+        if r.status_code in (400, 429, 500, 502, 503, 504) and attempt < 4:
+            time.sleep(3 * attempt)
+            continue
+        raise RuntimeError(last)
+    raise RuntimeError(last)
 
 # Words that make image models render phone/screenshot UI (bezel, status bar,
 # notch). We want RAW photos only, so neutralize them in any prompt before it
